@@ -73,3 +73,18 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+@layer utilities {
+  .pdf-only {
+    display: none;
+  }
+  
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    .pdf-only {
+      display: block !important;
+    }
+  }
+}

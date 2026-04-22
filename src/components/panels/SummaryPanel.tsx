@@ -1,12 +1,15 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
-import { Trophy, Zap, AlertTriangle, Loader2, Info, BookOpen, Search, Calculator, Download, Share2 } from "lucide-react";
+import { Trophy, Zap, AlertTriangle, Loader2, Info, BookOpen, Search, Calculator, Download, FileType } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 export function SummaryPanel() {
   const { state, updateSection } = useDeal();
   const [aiLoading, setAiLoading] = useState(false);
   const [thesisHtml, setThesisHtml] = useState<string | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   const health = useMemo(() => {
     let score = 20;
@@ -38,7 +41,7 @@ export function SummaryPanel() {
               num="01" 
               icon={Search} 
               title="Extraction" 
-              desc="Enter tickers in 'Fetch & Verify'. Gemini AI will pull financials directly." 
+              desc="Enter tickers in 'Fetch & Verify'. AI will pull financials directly." 
               active={!state.target}
             />
             <GuideStep 
@@ -65,41 +68,61 @@ export function SummaryPanel() {
     );
   }
 
-  const exportThesis = () => {
-    if (!thesisHtml) return;
-    const blob = new Blob([thesisHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `M&A_Thesis_${state.target?.ticker}_${new Date().toISOString().split('T')[0]}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportToPDF = async () => {
+    if (!reportRef.current || !thesisHtml) return;
+    
+    setAiLoading(true);
+    try {
+      const element = reportRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#0a0a0c", // Match our dark theme
+      });
+      
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      // Add margin
+      const margin = 10;
+      pdf.addImage(imgData, "PNG", margin, margin, pdfWidth - 2 * margin, pdfHeight - 2 * margin);
+      pdf.save(`Deal_Mandate_${state.target?.ticker}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error("PDF Export error:", err);
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const generateThesis = async () => {
     setAiLoading(true);
     setThesisHtml(null);
 
-    const prompt = `You are a Senior Managing Director at Goldman Sachs M&A Group. Write an exhaustive, board-level M&A mandate and investment thesis. 
-    The tone must be authoritative, objective, and highly sophisticated. Use bullet points and professional headers.
+    const prompt = `Act as a Senior Managing Director in Goldman Sachs Global M&A Group. Your task is to produce a "Boutique-Grade" Board of Directors Investment Mandate. 
+    The output must be strictly structured using professional HTML tags (<h3>, <h4>, <ul>, <li>, <strong>). 
+    Avoid all conversational filler ("Certainly", "Here is your report"). Start immediately with the title.
     
-    DEAL ARCHITECTURE:
+    DEAL CORE DATA:
     - Acquirer: ${state.acquirer?.name}
     - Target: ${state.target?.name}
-    - Transaction Style: ${state.deal.cashPct}% Cash / ${state.deal.stockPct}% Equity
-    - Implied Premium: ${fmtP((state.deal.offer / state.target!.currentPrice - 1) * 100)}
-    - Pro-Forma Synergies: ${state.target?.currency}${state.syn.hc + state.syn.proc + state.syn.fac + state.syn.it} Mn (Cost) / ${state.syn.cSell + state.syn.geo + state.syn.prc + state.syn.bnd} Mn (Revenue)
-    - WACC Constraint: ${state.wacc.toFixed(2)}%
+    - Consideration: ${state.deal.cashPct}% Cash / ${state.deal.stockPct}% Equity
+    - Offer Price: ${state.target?.currency}${state.deal.offer} (Premium: ${fmtP((state.deal.offer / state.target!.currentPrice - 1) * 100)})
+    - Implied EV: ${state.target?.currency}${fmt(state.deal.offer * state.target!.sharesOutstanding + state.target!.netDebt)}M
+    - WACC/Hurdle Rate: ${state.wacc.toFixed(2)}%
     
-    EXHAUSTIVE SECTIONS REQUIRED (HTML format <h3>, <h4>, <ul>, <li>):
-    1. Executive Summary & Strategic Rationale (Why this deal makes sense now)
-    2. Market Positioning & Competitive Moat Enhancement
-    3. Synergies Deep-Dive & Execution Plan
-    4. Financial Accretion/Dilution Analysis & Valuation Benchmark
-    5. Risk Architecture (Regulatory, Integration, Macro)
-    6. MD Recommendation & Next Operational Steps
+    REQUIRED STRUCTURE:
+    1. EXECUTUIVE SUMMARY: A high-level overview of the strategic logic and total value potential.
+    2. STRATEGIC RATIONALE: Focus on competitive moat enhancement, market share consolidation, and technical synergies.
+    3. SYNERGIES EXECUTION MATRIX: Detail cost synergies (Ops/IT/HC) and revenue synergies (Cross-sell/GEO).
+    4. VALUATION COMPASS: Analyze the transaction multiples vs industry benchmarks and DCF-implied value.
+    5. INTEGRATION RISK ARCHITECTURE: Identify the top 3 mission-critical risks and mitigation strategies.
+    6. FINAL MD RECOMMENDATION: A binary decision with a conviction level and immediate next steps.
     
-    Produce a long-form, comprehensive report that would be presented to a Board of Directors.`;
+    STYLING GUIDELINE: Use <h3> for primary sections and <h4> for sub-sections. Use <strong> for emphasis on financial figures.`;
 
     try {
       const response = await fetch("/api/ai/thesis", {
@@ -162,10 +185,11 @@ export function SummaryPanel() {
            <div className="flex items-center gap-3">
              {thesisHtml && (
                <button 
-                onClick={exportThesis}
-                className="px-4 py-2 border border-border-alt text-text-secondary font-bold text-[10px] uppercase tracking-[2px] rounded flex items-center gap-2 hover:bg-bg-alt transition-all"
+                onClick={exportToPDF}
+                disabled={aiLoading}
+                className="px-4 py-2 border border-border-alt text-text-secondary font-bold text-[10px] uppercase tracking-[2px] rounded flex items-center gap-2 hover:bg-bg-alt transition-all disabled:opacity-50"
                >
-                 <Download size={12} /> Export Mandate
+                 <FileType size={12} /> Export PDF
                </button>
              )}
              <button 
@@ -174,22 +198,40 @@ export function SummaryPanel() {
               className="px-6 py-2 bg-accent-blue text-white font-black text-[10px] uppercase tracking-[3px] rounded flex items-center gap-3 hover:brightness-110 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(37,99,235,0.25)] active:scale-[0.98]"
              >
                {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-               {thesisHtml ? "Regenerate Thesis" : "Generate Mandate"}
+               {thesisHtml ? "Regenerate Mandate" : "Generate Mandate"}
              </button>
            </div>
         </div>
 
         {thesisHtml ? (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-700" ref={reportRef}>
+             {/* Printable Header for PDF */}
+             <div className="hidden pdf-only mb-10 border-b border-border-alt pb-8">
+               <h1 className="text-2xl font-bold uppercase tracking-widest">Confidential M&A Mandate</h1>
+               <div className="grid grid-cols-2 gap-4 mt-4 text-xs font-mono opacity-60">
+                 <p>SUBJECT: ${state.target?.name} [${state.target?.ticker}]</p>
+                 <p>ACQUIRER: ${state.acquirer?.name} [${state.acquirer?.ticker}]</p>
+                 <p>DATE: ${new Date().toLocaleDateString()}</p>
+                 <p>CLASSIFICATION: BOARD-LEVEL HIGH CONFIDENTIAL</p>
+               </div>
+             </div>
+
             <div 
               className="prose prose-invert prose-sm max-w-none 
               prose-headings:font-bold prose-headings:uppercase prose-headings:tracking-widest prose-headings:text-accent-blue
-              prose-h3:text-[13px] prose-h4:text-[11px] prose-h4:text-text-muted prose-h4:mb-2 prose-h4:mt-6
-              prose-p:text-text-secondary prose-p:leading-relaxed prose-p:mb-4
-              prose-li:text-text-secondary prose-li:mb-2 prose-ul:mb-6
-              bg-bg/40 p-10 rounded-xl border border-border-alt shadow-inner"
+              prose-h3:text-[14px] prose-h3:mt-10 prose-h3:mb-6 prose-h3:border-b prose-h3:border-accent-blue/20 prose-h3:pb-2
+              prose-h4:text-[11px] prose-h4:text-text-muted prose-h4:mb-3 prose-h4:mt-8
+              prose-p:text-text-secondary prose-p:leading-relaxed prose-p:mb-5
+              prose-li:text-text-secondary prose-li:mb-2 prose-ul:mb-8
+              prose-strong:text-text-primary prose-strong:font-bold
+              bg-bg/40 p-12 rounded-xl border border-border-alt shadow-inner"
               dangerouslySetInnerHTML={{ __html: thesisHtml }} 
             />
+            
+            {/* Printable Footer for PDF */}
+            <div className="hidden pdf-only mt-10 text-[8px] font-mono opacity-40 text-center uppercase tracking-widest leading-loose">
+              Synthesized by Groq AI M&A Terminal · Goldman Sachs Global Strategy Core · Unauthorized duplication is strictly prohibited
+            </div>
           </div>
         ) : (
           <div className="py-24 border border-dashed border-border-alt rounded-xl flex flex-col items-center justify-center space-y-6 bg-bg/20">
@@ -205,7 +247,7 @@ export function SummaryPanel() {
           </div>
         )}
 
-        <div className="mt-8 pt-8 border-t border-border-alt/50 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
+        <div className="mt-8 pt-8 border-t border-border-alt/50 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center no-print">
            <div className="flex gap-8">
              <div className="space-y-1">
                <p className="text-[8px] text-text-muted uppercase tracking-widest font-mono">Premium Status</p>
@@ -223,7 +265,7 @@ export function SummaryPanel() {
            
            <div className="bg-bg border border-border-alt rounded px-4 py-2 flex items-center gap-3">
               <Info size={14} className="text-accent-blue" />
-              <span className="text-[9px] font-mono text-text-muted uppercase tracking-tighter">This narrative is generated via Groq/XAI logic. High fidelity synthesis.</span>
+              <span className="text-[9px] font-mono text-text-muted uppercase tracking-tighter">This narrative is generated via Groq AI logic. High fidelity synthesis.</span>
            </div>
         </div>
       </section>
