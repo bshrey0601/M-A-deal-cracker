@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-bg: #09090b;
+  --color-bg-alt: #0c0c0e;
+  --color-bg-card: #111113;
+  --color-border: #18181b;
+  --color-border-alt: #27272a;
+  
+  --color-accent-blue: #2563eb;
+  --color-accent-green: #10b981;
+  --color-accent-red: #ef4444;
+  --color-accent-orange: #f59e0b;
+  --color-accent-purple: #8b5cf6;
+  --color-accent-cyan: #06b6d4;
+  
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom styles from Elegant Dark */
+.accuracy-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent-green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.ld {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.sk {
+  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+  background-size: 200% 100%;
+  animation: sh 1.5s infinite;
+  border-radius: 4px;
+  height: 12px;
+  margin-bottom: 6px;
+}
+
+@keyframes sh {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
