@@ -2,7 +2,7 @@ M&A Deal Cracker
 
 An AI-powered web application that analyzes mergers & acquisitions deals — extracting key terms, surfacing valuation drivers, and explaining deal structure in plain English using Google's Gemini API.
 
-🔗 Live Demo: m-a-deal-cracker.onrender.com
+🔗 Live Demo: [m-a-deal-cracker.onrender.com](https://m-a-deal-cracker.onrender.com/)
 
 📖 Overview
 M&A Deal Cracker is built for finance students, analysts, and anyone who wants to quickly understand the structure and economics of an M&A transaction without slogging through hundreds of pages of disclosures. Paste a deal summary, press release, or 8-K excerpt, and the app uses a large language model to break down what's actually happening in the deal.
@@ -124,5 +124,5 @@ This project is licensed under the MIT License — see the LICENSE file for deta
 Shrey Bhatt
 
 📧 bshrey@wustl.edu
-💼 LinkedIn
+💼 LinkedIn: www.linkedin.com/in/shreybhatt0601
 🎓 M.S. Business Analytics — FinTech, Washington University in St. Louis
