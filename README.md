@@ -50,6 +50,8 @@ npm start
 | --- | --- | --- |
 | `GROQ_API_KEY` | Optional | Enables the AI investment thesis and the "Use AI estimate" fallback. Get a free key at [console.groq.com/keys](https://console.groq.com/keys). Without it, everything except those two features works. |
 | `PORT` | Optional | Port to listen on (default `3000`). |
+| `CORS_ORIGINS` | Optional | Server only. Origins allowed to call the API from another site; defaults to `https://*.github.io`. |
+| `VITE_API_BASE_URL` | Optional | Build time only. Server URL for a separately hosted interface (set by the Pages workflow). |
 
 Never commit your `.env`; it is already in `.gitignore`.
 
@@ -63,7 +65,11 @@ Never commit your `.env`; it is already in `.gitignore`.
 | `npm test` | Unit tests for the DCF, accretion/dilution and market-data mapping |
 | `npm run lint` | TypeScript type check |
 
-## Deploy to Render
+## Deploy
+
+The app has two parts: the React interface and a small Node server that fetches market data and calls the AI. **Live data only works where the Node server runs.**
+
+### Option 1: Render (recommended, everything in one place)
 
 The repo includes a `render.yaml` blueprint.
 
@@ -72,6 +78,19 @@ The repo includes a `render.yaml` blueprint.
 3. Deploy. Health check: `/api/health`.
 
 Any Node 22 host works the same way: run `npm ci && npm run build`, then `npm start`; the server reads `PORT` from the environment.
+
+### Option 2: GitHub Pages for the interface + Render for the server
+
+GitHub Pages only serves static files, so it can host the interface but not the Node server. The workflow in `.github/workflows/deploy-pages.yml` builds the interface and points it at the Render server.
+
+1. Deploy the server on Render (Option 1).
+2. In GitHub, go to **Settings → Pages → Build and deployment** and set **Source** to **GitHub Actions**. (With "Deploy from a branch", Pages serves the raw source files and the page is blank.)
+3. If your Render URL is not `https://m-a-deal-cracker.onrender.com`, add a repository variable `API_BASE_URL` with your server URL (**Settings → Secrets and variables → Actions → Variables**).
+4. Push to `main` (or run the workflow manually from the **Actions** tab). The site appears at `https://<your-username>.github.io/M-A-deal-cracker/`.
+
+The server accepts requests from any `https://<user>.github.io` page by default. To restrict or change that, set `CORS_ORIGINS` on the server to a comma-separated list of allowed origins.
+
+If the Pages site can't reach the server, it shows a "Data server not connected" notice instead of a blank page.
 
 ## Tech stack
 
@@ -94,6 +113,7 @@ src/
   services/dataService.ts  Client calls to the server API
   constants.ts             Industry betas, country risk data, precedent deals
 render.yaml                Render deployment blueprint
+.github/workflows/         GitHub Pages build and deploy
 ```
 
 ## Disclaimer

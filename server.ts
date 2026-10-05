@@ -38,6 +38,25 @@ async function startServer() {
 
   app.use(express.json({ limit: "100kb" }));
 
+  // Allow the UI to be hosted elsewhere. CORS_ORIGINS is a comma-separated list or "*";
+  // when unset, GitHub Pages sites (https://<user>.github.io) are allowed.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
+  const corsAllowed = (origin: string) =>
+    corsOrigins.length
+      ? corsOrigins.includes("*") || corsOrigins.includes(origin)
+      : /^https:\/\/[a-z0-9-]+\.github\.io$/i.test(origin);
+  app.use("/api", (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && corsAllowed(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+    next();
+  });
+
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", marketData: "yahoo-finance", aiConfigured: Boolean(groqKey()) });
   });

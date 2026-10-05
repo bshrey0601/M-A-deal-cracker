@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDeal } from "../../context/DealContext";
 import { fetchCompanyData, fetchCompanyEstimate } from "../../services/dataService";
 import { CompanyData } from "../../types";
+import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -12,6 +13,13 @@ export function FetchPanel() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [offerEstimate, setOfferEstimate] = useState(false);
+  const [backendUp, setBackendUp] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/health"))
+      .then(r => setBackendUp(r.ok && !!r.headers.get("content-type")?.includes("application/json")))
+      .catch(() => setBackendUp(false));
+  }, []);
 
   const handleFetchBoth = async (useEstimate = false) => {
     const fetcher: (t: string) => Promise<CompanyData> = useEstimate ? fetchCompanyEstimate : fetchCompanyData;
@@ -55,7 +63,7 @@ export function FetchPanel() {
         : "Loaded live market data from Yahoo Finance.");
     } catch (err: any) {
       setStatus(`Error: ${err.message}`);
-      if (!useEstimate) setOfferEstimate(true);
+      if (!useEstimate && err.message !== BACKEND_MISSING) setOfferEstimate(true);
     } finally {
       setLoading(false);
     }
@@ -81,6 +89,12 @@ export function FetchPanel() {
           </div>
         )}
       </header>
+
+      {backendUp === false && (
+        <div className="bg-accent-red/10 border border-accent-red/30 rounded-xl p-4 text-[12px] text-accent-red leading-relaxed">
+          <strong className="uppercase tracking-wider text-[11px]">Data server not connected.</strong> {BACKEND_MISSING}
+        </div>
+      )}
 
       <section className="bg-bg-card border border-border-alt rounded-xl p-5 flex flex-col gap-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4">
