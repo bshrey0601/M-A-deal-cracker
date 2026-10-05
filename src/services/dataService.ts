@@ -1,6 +1,29 @@
 import { CompanyData } from "../types";
 
+async function readError(response: Response, fallback: string) {
+  try {
+    const data = await response.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Live quote and reported fundamentals from Yahoo Finance via the server. */
 export async function fetchCompanyData(ticker: string): Promise<CompanyData> {
+  const sym = ticker.trim().toUpperCase();
+  const response = await fetch(`/api/market/${encodeURIComponent(sym)}`);
+  if (!response.ok) {
+    throw new Error(await readError(response, `Cannot fetch "${sym}" (HTTP ${response.status}).`));
+  }
+  return response.json();
+}
+
+/**
+ * Fallback: asks an LLM to estimate the company's financials. These figures are
+ * NOT verified and can be wrong; the result is labelled unverified in the UI.
+ */
+export async function fetchCompanyEstimate(ticker: string): Promise<CompanyData> {
   const sym = ticker.trim().toUpperCase();
   
   try {
@@ -11,8 +34,7 @@ export async function fetchCompanyData(ticker: string): Promise<CompanyData> {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Extraction failed");
+      throw new Error(await readError(response, "Extraction failed"));
     }
 
     const result = await response.json();
@@ -47,10 +69,16 @@ export async function fetchCompanyData(ticker: string): Promise<CompanyData> {
       netMargin: (result.netMargin || 0) * 100,
       fiscalYear: result.fiscalYear || 'FY' + (new Date().getFullYear() - 1),
       exchange: result.exchange || 'NASDAQ',
-      description: result.description || `${sym} · ${result.sector}`
+      description: result.description || `${sym} · ${result.sector}`,
+      source: {
+        provider: "AI estimate (Groq, llama-3.1-8b)",
+        verified: false,
+        asOf: new Date().toISOString(),
+        warnings: ["Figures are an AI estimate, not reported data. Verify against filings before relying on them."],
+      },
     };
   } catch (e: any) {
-    console.error(`Groq Fetch error for ${sym}:`, e);
-    throw new Error(`Cannot fetch "${sym}": Groq extraction failed. please verify your GROQ_API_KEY.`);
+    console.error(`Groq estimate error for ${sym}:`, e);
+    throw new Error(`AI estimate for "${sym}" failed: ${e.message}`);
   }
 }
