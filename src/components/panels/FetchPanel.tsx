@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useDeal } from "../../context/DealContext";
-import { fetchCompanyData } from "../../services/dataService";
+import { fetchCompanyData, fetchCompanyEstimate } from "../../services/dataService";
+import { CompanyData } from "../../types";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -10,20 +11,23 @@ export function FetchPanel() {
   const [tkA, setTkA] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [offerEstimate, setOfferEstimate] = useState(false);
 
-  const handleFetchBoth = async () => {
+  const handleFetchBoth = async (useEstimate = false) => {
+    const fetcher: (t: string) => Promise<CompanyData> = useEstimate ? fetchCompanyEstimate : fetchCompanyData;
     if (!tkT || !tkA) {
       alert("Please enter both target and acquirer tickers.");
       return;
     }
     
     setLoading(true);
+    setOfferEstimate(false);
     setStatus(`Fetching ${tkT}...`);
     
     try {
-      const target = await fetchCompanyData(tkT);
+      const target = await fetcher(tkT);
       setStatus(`Fetching ${tkA}...`);
-      const acquirer = await fetchCompanyData(tkA);
+      const acquirer = await fetcher(tkA);
       
       const rg = target.revenueGrowthYoY || 10;
       
@@ -38,17 +42,20 @@ export function FetchPanel() {
         dcf: {
           ...prev.dcf,
           ebitM: +(target.ebit / target.revenue * 100).toFixed(1) || 12,
-          daPct: +(target.da / target.revenue * 100).toFixed(1) || 5,
-          cxPct: +(target.capex / target.revenue * 100).toFixed(1) || 5,
+          daPct: target.verifiedDA === false ? 5 : +(target.da / target.revenue * 100).toFixed(1) || 5,
+          cxPct: target.verifiedCapex === false ? 5 : +(target.capex / target.revenue * 100).toFixed(1) || 5,
           bear: +Math.max(2, rg * 0.6).toFixed(1),
           base: +rg.toFixed(1),
           bull: +Math.min(40, rg * 1.5).toFixed(1)
         }
       }));
       
-      setStatus("Successfully loaded market data.");
+      setStatus(useEstimate
+        ? "Loaded AI estimates. These are NOT verified figures."
+        : "Loaded live market data from Yahoo Finance.");
     } catch (err: any) {
       setStatus(`Error: ${err.message}`);
+      if (!useEstimate) setOfferEstimate(true);
     } finally {
       setLoading(false);
     }
@@ -106,7 +113,7 @@ export function FetchPanel() {
           
           <div className="md:col-span-3">
             <button 
-              onClick={handleFetchBoth}
+              onClick={() => handleFetchBoth()}
               disabled={loading}
               className="w-full h-[40px] px-6 bg-accent-blue hover:bg-accent-blue/90 text-white font-bold text-xs uppercase tracking-widest rounded transition-all shadow-[0_0_15px_rgba(37,99,235,0.2)] disabled:opacity-50"
             >
@@ -116,9 +123,17 @@ export function FetchPanel() {
         </div>
         
         <div className="mt-2 font-mono text-[9px] text-text-muted uppercase tracking-tight flex items-center justify-between">
-          <span>Source: Yahoo Finance Real-time · Multi-proxy enabled</span>
-          {status && <span className={cn(status.startsWith("Error") ? "text-accent-red" : "text-accent-orange", "font-bold")}>{status}</span>}
+          <span>Source: Yahoo Finance (quotes may be delayed) · Fundamentals: latest reported LTM</span>
+          {status && <span className={cn(status.startsWith("Error") ? "text-accent-red" : "text-accent-orange", "font-bold normal-case")}>{status}</span>}
         </div>
+        {offerEstimate && (
+          <div className="flex items-center justify-between gap-4 bg-accent-orange/10 border border-accent-orange/20 rounded p-3 text-[11px] text-accent-orange">
+            <span>Live data unavailable. You can load AI-estimated figures instead, but they are not verified and may be wrong.</span>
+            <button onClick={() => handleFetchBoth(true)} disabled={loading} className="shrink-0 px-3 py-1.5 border border-accent-orange/40 rounded font-bold uppercase tracking-wider text-[10px] hover:bg-accent-orange/10 disabled:opacity-50">
+              Use AI estimate
+            </button>
+          </div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -158,7 +173,7 @@ function FetchPreview({ target, acquirer }: { target: any, acquirer: any }) {
           <button className="px-4 py-2 bg-border-alt hover:bg-zinc-700 rounded text-[10px] uppercase font-bold tracking-widest text-text-secondary transition-colors border border-zinc-700/50">Deal VDR</button>
         </div>
         <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">
-           Step 01: Data Integrity Verified
+           Step 01: {target.source?.verified && acquirer.source?.verified ? "Market Data Loaded" : "Unverified Estimates Loaded"}
         </p>
       </footer>
     </div>
@@ -177,7 +192,9 @@ function CompanyCard({ company, type, color }: { company: any, type: string, col
           <span className="text-2xl font-mono text-accent-blue/80 opacity-50 font-light">{company.ticker}</span>
       </div>
       
-      <p className="text-[11px] text-text-muted mb-6 leading-relaxed bg-bg/40 p-2 rounded border border-border-alt/30 select-none italic font-mono truncate">{company.description}</p>
+      <p className="text-[11px] text-text-muted mb-3 leading-relaxed bg-bg/40 p-2 rounded border border-border-alt/30 select-none italic font-mono truncate">{company.description}</p>
+
+      <SourceBadge company={company} />
       
       <div className="grid grid-cols-3 gap-6 mb-8">
         <MetricBox label="Last Price" val={`${cur}${fmt(company.currentPrice, 2)}`} sub={`${cur}${fmt(company.fiftyTwoWeekLow, 0)} Low`} />
@@ -189,8 +206,25 @@ function CompanyCard({ company, type, color }: { company: any, type: string, col
          <DataRow label="LTM Revenue" val={`${cur}${fmt(company.revenue)} Mn`} trend={`${fmtP(company.revenueGrowthYoY, 1)}`} />
          <DataRow label="EBITDA Margin" val={`${fmtP(company.ebitdaMargin, 1)}`} trend={fmt(company.ebitda) + " Mn"} />
          <DataRow label="Net Earnings" val={`${cur}${fmt(company.netIncome)} Mn`} trend={fmtP(company.netMargin, 1)} highlight />
-         <DataRow label="Net Debt / Cash" val={`${cur}${fmt(company.netDebt)} Mn`} trend="Verified" />
+         <DataRow label="Net Debt / Cash" val={`${cur}${fmt(company.netDebt)} Mn`} trend={company.source?.verified ? "Reported" : "Estimate"} />
       </div>
+    </div>
+  );
+}
+
+function SourceBadge({ company }: { company: CompanyData }) {
+  const src = company.source;
+  if (!src) return null;
+  const when = new Date(src.marketTime ?? src.asOf).toLocaleString();
+  return (
+    <div className={cn(
+      "mb-6 rounded border p-2 text-[10px] font-mono",
+      src.verified ? "border-accent-green/20 bg-accent-green/5 text-accent-green" : "border-accent-orange/30 bg-accent-orange/10 text-accent-orange"
+    )}>
+      <div className="font-bold uppercase tracking-wider">
+        {src.verified ? "✓" : "⚠"} {src.provider} · {src.verified ? `price as of ${when}` : "unverified AI estimate"}
+      </div>
+      {src.warnings.map((w, i) => <div key={i} className="mt-1 normal-case opacity-90">{w}</div>)}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
+import { computeDCF } from "../../lib/dcf";
 import { BarChart2, TrendingUp, TrendingDown, Settings, Grid3X3 } from "lucide-react";
 
 export function DCFPanel() {
@@ -13,43 +14,13 @@ export function DCFPanel() {
         <TrendingDown size={24} />
         <div>
           <h3 className="font-bold uppercase tracking-wider">Market Data Required</h3>
-          <p className="text-[11px] font-mono mt-1 opacity-90">Please fetch company data first to generate the DCF model. Calibrate WACC for 85%+ accuracy.</p>
+          <p className="text-[11px] font-mono mt-1 opacity-90">Please fetch company data first to generate the DCF model.</p>
         </div>
       </div>
     );
   }
 
-  const computeDCF = (growth: number) => {
-    const d = state.dcf;
-    const wacc = d.wacc / 100;
-    const tgr = d.tgr / 100;
-    const tax = d.tax / 100;
-    
-    if (wacc <= tgr) return null;
-    
-    const daP = d.daPct / 100;
-    const cxP = d.cxPct / 100;
-    const eM = d.ebitM / 100;
-    
-    let rev = t.revenue;
-    let sumPV = 0;
-    let lastFCF = 0;
-    
-    for (let y = 1; y <= 5; y++) {
-      rev *= (1 + growth / 100);
-      const fcf = rev * eM * (1 - tax) + rev * daP - rev * cxP;
-      sumPV += fcf / Math.pow(1 + wacc, y);
-      lastFCF = fcf;
-    }
-    
-    const tv = lastFCF * (1 + tgr) / (wacc - tgr);
-    const pvTV = tv / Math.pow(1 + wacc, 5);
-    const EV = sumPV + pvTV;
-    const eq = EV - t.netDebt;
-    const price = eq / t.sharesOutstanding;
-    
-    return { EV, eq, price, sumPV, pvTV, tvPct: pvTV / EV * 100 };
-  };
+  const run = (growth: number) => computeDCF(growth, state.dcf, t);
 
   const scenarios = [
     { n: "Bear Case", k: "bear", col: "#ff3557" },
@@ -59,7 +30,7 @@ export function DCFPanel() {
 
   const results = scenarios.map(sc => ({
     ...sc,
-    ...(computeDCF((state.dcf as any)[sc.k]) || { error: true })
+    ...(run((state.dcf as any)[sc.k]) || { error: true })
   }));
 
   const waccSteps = [8, 9, 10, 11, 12, 13, 14];
@@ -75,7 +46,7 @@ export function DCFPanel() {
         <div className="flex gap-8">
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Base Price</p>
-            <p className="text-xl font-mono text-accent-blue">{t.currency}{fmt(computeDCF(state.dcf.base)?.price || 0, 2)}</p>
+            <p className="text-xl font-mono text-accent-blue">{t.currency}{fmt(run(state.dcf.base)?.price ?? NaN, 2)}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Market Price</p>
@@ -138,6 +109,10 @@ export function DCFPanel() {
                <Slider label="Target EBIT Margin" value={state.dcf.ebitM} min={3} max={45} step={0.5} onChange={v => updateSection("dcf", { ebitM: v })} unit="%" />
                <Slider label="Discount Rate (WACC)" value={state.dcf.wacc} min={5} max={20} step={0.25} onChange={v => updateSection("dcf", { wacc: v })} unit="%" />
                <Slider label="Term. Growth Rate" value={state.dcf.tgr} min={1} max={8} step={0.25} onChange={v => updateSection("dcf", { tgr: v })} unit="%" />
+               <div className="h-px bg-border-alt my-2" />
+               <Slider label="Tax Rate" value={state.dcf.tax} min={0} max={40} step={0.5} onChange={v => updateSection("dcf", { tax: v })} unit="%" />
+               <Slider label="D&A (% of Revenue)" value={state.dcf.daPct} min={0} max={25} step={0.1} onChange={v => updateSection("dcf", { daPct: v })} unit="%" />
+               <Slider label="CapEx (% of Revenue)" value={state.dcf.cxPct} min={0} max={30} step={0.1} onChange={v => updateSection("dcf", { cxPct: v })} unit="%" />
             </div>
           </div>
         </div>
@@ -162,7 +137,7 @@ export function DCFPanel() {
                            <td className="p-3 text-text-muted border-r border-border-alt bg-bg-alt/50 text-right font-bold">{tgrVal}%</td>
                            {waccSteps.map(wVal => {
                              if (wVal <= tgrVal) return <td key={wVal} className="p-3 text-text-muted/20 bg-bg opacity-50">–</td>;
-                             const resVal = computeDCF_static(state.dcf.base, { ...state.dcf, wacc: wVal, tgr: tgrVal }, t);
+                             const resVal = computeDCF(state.dcf.base, { ...state.dcf, wacc: wVal, tgr: tgrVal }, t);
                              const price = resVal?.price || 0;
                              const ratio = price / t.currentPrice;
                              
@@ -230,31 +205,4 @@ function CompRow({ label, mult, price, marketPrice, cur }: any) {
       </td>
     </tr>
   );
-}
-
-// Static helper for cell calc
-function computeDCF_static(growth: number, dcf: any, t: any) {
-    const wacc = dcf.wacc / 100;
-    const tgr = dcf.tgr / 100;
-    if (wacc <= tgr) return null;
-    const tax = 0.25; // Default tax
-    const daP = 0.05; // Default DA
-    const cxP = 0.05; // Default CapEx
-    const eM = dcf.ebitM / 100;
-    
-    let rev = t.revenue;
-    let sumPV = 0;
-    for (let y = 1; y <= 5; y++) {
-      rev *= (1 + growth / 100);
-      const ebit = rev * eM;
-      const fcf = ebit * (1 - tax) + (rev * daP) - (rev * cxP);
-      sumPV += fcf / Math.pow(1 + wacc, y);
-      if (y === 5) {
-        const terminalValue = (fcf * (1 + tgr)) / (wacc - tgr);
-        sumPV += terminalValue / Math.pow(1 + wacc, y);
-      }
-    }
-    const EV = sumPV;
-    const equityVal = EV - t.netDebt;
-    return { price: equityVal / t.sharesOutstanding, EV };
 }

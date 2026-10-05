@@ -31,6 +31,18 @@ export interface CompanyData {
   description: string;
   verifiedDA?: boolean;
   verifiedCapex?: boolean;
+  source?: DataSource;
+}
+
+export interface DataSource {
+  provider: string;
+  /** true = figures come from a market-data feed; false = AI estimate, not verified. */
+  verified: boolean;
+  /** When the app fetched the data (ISO). */
+  asOf: string;
+  /** Exchange timestamp of the quoted price (ISO), when known. */
+  marketTime?: string;
+  warnings: string[];
 }
 
 export interface PrecedentDeal {
