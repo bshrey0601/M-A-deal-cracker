@@ -7,12 +7,6 @@ export function DCFPanel() {
   const { state, updateSection } = useDeal();
   const t = state.target;
 
-  React.useEffect(() => {
-    if (t && !state.proformaCalculated) {
-      updateSection("proformaCalculated", true as any);
-    }
-  }, [t, state.proformaCalculated, updateSection]);
-
   if (!t) {
     return (
       <div className="bg-accent-orange/10 border border-accent-orange/20 rounded-lg p-6 text-accent-orange flex items-center gap-3">

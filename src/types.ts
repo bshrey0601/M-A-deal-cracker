@@ -52,6 +52,10 @@ export interface DealState {
   cfVerified: { t: boolean; a: boolean };
   ppaApplied: boolean;
   ppaAnnualAmort: number;
+  ppa: {
+    intangPct: number;
+    life: number;
+  };
   precedentsBenchmarked: boolean;
   proformaCalculated: boolean;
   thesisGenerated: boolean;

@@ -30,6 +30,7 @@ export function Sidebar({ activePanel, setActivePanel }: SidebarProps) {
     { id: "wacc", label: "Financial Modeling", icon: Calculator },
     { id: "precedents", label: "Market Cross-Check", icon: History },
     { id: "dcf", label: "AI Deal Engine", icon: BarChart2 },
+    { id: "accretion", label: "Deal Structuring", icon: Layers },
     { id: "summary", label: "Thesis & Review", icon: Trophy },
   ];
 
