@@ -7,6 +7,7 @@ import { WaccPanel } from "./components/panels/WaccPanel";
 import { DCFPanel } from "./components/panels/DCFPanel";
 import { PrecedentsPanel } from "./components/panels/PrecedentsPanel";
 import { SummaryPanel } from "./components/panels/SummaryPanel";
+import { AccretionPanel } from "./components/panels/AccretionPanel";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
@@ -29,12 +30,13 @@ export default function App() {
       case "wacc": return <WaccPanel />;
       case "precedents": return <PrecedentsPanel />;
       case "dcf": return <DCFPanel />;
+      case "accretion": return <AccretionPanel />;
       case "summary": return <SummaryPanel />;
       default: return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-text-muted">
           <div className="text-[40px] mb-4">📐</div>
           <h2 className="text-[14px] font-mono uppercase tracking-[2px] font-bold">Module Under Construction</h2>
-          <p className="text-[11px] mt-2 max-w-xs text-center">Core modules (Fetch, WACC, Precedents, DCF, Summary) are live. Accretion & PPA logic available in AI Thesis.</p>
+          <p className="text-[11px] mt-2 max-w-xs text-center">Core modules (Fetch, WACC, Precedents, DCF, Deal Structuring, Summary) are live.</p>
         </div>
       );
     }

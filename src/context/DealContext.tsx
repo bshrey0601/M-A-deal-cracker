@@ -9,6 +9,7 @@ const initialState: DealState = {
   cfVerified: { t: false, a: false },
   ppaApplied: false,
   ppaAnnualAmort: 0,
+  ppa: { intangPct: 30, life: 10 },
   precedentsBenchmarked: false,
   proformaCalculated: false,
   thesisGenerated: false,

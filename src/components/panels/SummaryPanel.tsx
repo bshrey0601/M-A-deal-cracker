@@ -4,6 +4,7 @@ import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Trophy, Zap, AlertTriangle, Loader2, Info, BookOpen, Search, Calculator, Download, FileType } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { computeAccretion } from "../../lib/accretion";
 
 export function SummaryPanel() {
   const { state, updateSection } = useDeal();
@@ -68,6 +69,8 @@ export function SummaryPanel() {
     );
   }
 
+  const acc = computeAccretion({ target: state.target, acquirer: state.acquirer, deal: state.deal, syn: state.syn, ppa: state.ppa, taxRate: state.dcf.tax });
+
   const exportToPDF = async () => {
     if (!reportRef.current || !thesisHtml) return;
     
@@ -113,6 +116,10 @@ export function SummaryPanel() {
     - Offer Price: ${state.target?.currency}${state.deal.offer} (Premium: ${fmtP((state.deal.offer / state.target!.currentPrice - 1) * 100)})
     - Implied EV: ${state.target?.currency}${fmt(state.deal.offer * state.target!.sharesOutstanding + state.target!.netDebt)}M
     - WACC/Hurdle Rate: ${state.wacc.toFixed(2)}%
+    - Run-Rate Synergies (pre-tax, realized): ${state.target?.currency}${fmt(acc.totalSynergies, 1)}M (Revenue ${fmt(acc.revenueSynergies, 1)}M / Cost ${fmt(acc.costSynergies, 1)}M); One-time integration costs ${fmt(acc.integrationCosts, 1)}M
+    - PPA: Goodwill ${fmt(acc.goodwill)}M, Identified Intangibles ${fmt(acc.identifiedIntangibles)}M, Annual Amortization ${fmt(acc.annualAmortization, 1)}M
+    - Pro-Forma EPS: ${fmt(acc.proFormaEPS, 2)} vs Standalone ${fmt(acc.standaloneEPS, 2)} (${acc.meaningful ? fmtP(acc.accretionPct, 2) + (acc.accretive ? " accretive" : " dilutive") : "not meaningful: acquirer loss-making"}); Breakeven pre-tax synergies ${fmt(acc.breakevenSynergies, 1)}M
+    Use ONLY the figures above; do not invent numbers that are not provided.
     
     REQUIRED STRUCTURE:
     1. EXECUTUIVE SUMMARY: A high-level overview of the strategic logic and total value potential.
@@ -169,7 +176,7 @@ export function SummaryPanel() {
          <StatsCard label="Control Prem" val={fmtP((state.deal.offer / state.target.currentPrice - 1) * 100)} sub="vs market" />
          <StatsCard label="Enterprise Val" val={`${state.target.currency}${fmt(state.deal.offer * state.target.sharesOutstanding + state.target.netDebt)}M`} sub="Transaction Scale" />
          <StatsCard label="EV/EBITDA Paid" val={fmtX((state.deal.offer * state.target.sharesOutstanding + state.target.netDebt) / state.target.ebitda)} sub="Implied Ratio" />
-         <StatsCard label="Total Synergies" val={`${state.target.currency}${fmt(state.syn.cSell + state.syn.geo + state.syn.prc + state.syn.bnd + state.syn.hc + state.syn.proc + state.syn.fac + state.syn.it)}M`} sub="Fully Realized" accent="accent-green" />
+         <StatsCard label="Total Synergies" val={`${state.target.currency}${fmt(acc.totalSynergies, 1)}M`} sub="Run-Rate, Realized" accent="accent-green" />
          <StatsCard label="Confidence Score" val={`${health}%`} sub="Data Integrity" active />
       </div>
 
