@@ -1,20 +1,17 @@
 import { CompanyData } from "../types";
-
-async function readError(response: Response, fallback: string) {
-  try {
-    const data = await response.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
+import { apiUrl, readApiError, BACKEND_MISSING } from "../lib/api";
 
 /** Live quote and reported fundamentals from Yahoo Finance via the server. */
 export async function fetchCompanyData(ticker: string): Promise<CompanyData> {
   const sym = ticker.trim().toUpperCase();
-  const response = await fetch(`/api/market/${encodeURIComponent(sym)}`);
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/api/market/${encodeURIComponent(sym)}`));
+  } catch {
+    throw new Error(BACKEND_MISSING);
+  }
   if (!response.ok) {
-    throw new Error(await readError(response, `Cannot fetch "${sym}" (HTTP ${response.status}).`));
+    throw new Error(await readApiError(response, `Cannot fetch "${sym}" (HTTP ${response.status}).`));
   }
   return response.json();
 }
@@ -27,14 +24,14 @@ export async function fetchCompanyEstimate(ticker: string): Promise<CompanyData>
   const sym = ticker.trim().toUpperCase();
   
   try {
-    const response = await fetch("/api/ai/extract", {
+    const response = await fetch(apiUrl("/api/ai/extract"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker: sym }),
     });
 
     if (!response.ok) {
-      throw new Error(await readError(response, "Extraction failed"));
+      throw new Error(await readApiError(response, "Extraction failed"));
     }
 
     const result = await response.json();

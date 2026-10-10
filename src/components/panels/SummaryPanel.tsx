@@ -6,6 +6,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { computeAccretion } from "../../lib/accretion";
 import DOMPurify from "dompurify";
+import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 
 export function SummaryPanel() {
   const { state, updateSection } = useDeal();
@@ -133,7 +134,7 @@ export function SummaryPanel() {
     STYLING GUIDELINE: Use <h3> for primary sections and <h4> for sub-sections. Use <strong> for emphasis on financial figures.`;
 
     try {
-      const response = await fetch("/api/ai/thesis", {
+      const response = await fetch(apiUrl("/api/ai/thesis"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -144,7 +145,7 @@ export function SummaryPanel() {
       try {
         data = JSON.parse(text);
       } catch (e) {
-        setThesisHtml(`<p class='text-accent-red text-xs font-mono'>Critical Error: Server returned non-JSON data. Check logs.</p>`);
+        setThesisHtml(`<p class='text-accent-red text-xs font-mono'>${BACKEND_MISSING}</p>`);
         return;
       }
       
@@ -158,7 +159,7 @@ export function SummaryPanel() {
       updateSection("thesisGenerated", true as any);
     } catch (err) {
       console.error("Thesis AI error:", err);
-      setThesisHtml("<p class='text-accent-red text-xs font-mono'>Network Error: Failed to communicate with the Mandate Engine proxy.</p>");
+      setThesisHtml(`<p class='text-accent-red text-xs font-mono'>${BACKEND_MISSING}</p>`);
     } finally {
       setAiLoading(false);
     }
