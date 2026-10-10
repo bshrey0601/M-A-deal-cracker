@@ -16,7 +16,7 @@ export function Topbar() {
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2 px-3 py-1.5 bg-bg border border-border-alt rounded-md text-xs">
           <div className="w-2 h-2 bg-accent-orange rounded-full animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
-          <span className="text-text-secondary font-mono uppercase">LIVE DATA · YAHOO FINANCE</span>
+          <span className="text-text-secondary font-mono uppercase">LIVE DATA · SEC EDGAR + MARKET PRICES</span>
         </div>
         <div className="w-8 h-8 rounded-full bg-border border border-border-alt" />
       </div>

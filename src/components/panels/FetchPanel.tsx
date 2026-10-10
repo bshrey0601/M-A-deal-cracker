@@ -60,7 +60,7 @@ export function FetchPanel() {
       
       setStatus(useEstimate
         ? "Loaded AI estimates. These are NOT verified figures."
-        : "Loaded live market data from Yahoo Finance.");
+        : "Loaded live market data.");
     } catch (err: any) {
       setStatus(`Error: ${err.message}`);
       if (!useEstimate && err.message !== BACKEND_MISSING) setOfferEstimate(true);
@@ -137,7 +137,7 @@ export function FetchPanel() {
         </div>
         
         <div className="mt-2 font-mono text-[9px] text-text-muted uppercase tracking-tight flex items-center justify-between">
-          <span>Source: Yahoo Finance (quotes may be delayed) · Fundamentals: latest reported LTM</span>
+          <span>Financials: SEC EDGAR filings (US) or Yahoo Finance · Prices: Yahoo Finance / Stooq (may be delayed)</span>
           {status && <span className={cn(status.startsWith("Error") ? "text-accent-red" : "text-accent-orange", "font-bold normal-case")}>{status}</span>}
         </div>
         {offerEstimate && (
