@@ -11,3 +11,7 @@ services:
         value: "22"
       - key: GROQ_API_KEY
         sync: false
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false

@@ -2,12 +2,9 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import YahooFinance from "yahoo-finance2";
-import { mapYahooToCompany } from "./src/lib/marketData";
+import { getCompany, MarketDataError } from "./server/marketService";
 
 dotenv.config();
-
-const yahoo = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 // Tickers like AAPL, BRK-B, RELIANCE.NS, 0700.HK, ^GSPC. Also keeps user input out of LLM prompts.
 const TICKER_RE = /^[A-Z0-9^][A-Z0-9.\-=^]{0,19}$/;
@@ -15,19 +12,6 @@ const cleanTicker = (v: unknown) => {
   const t = String(v ?? "").trim().toUpperCase();
   return TICKER_RE.test(t) ? t : null;
 };
-
-const SUMMARY_MODULES = ["price", "summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile"] as const;
-
-/** Rate converting 1 unit of `from` into `to`, handling London's pence quotes (GBp). */
-async function fxRate(from: string, to: string): Promise<number> {
-  const norm = (c: string) => (c === "GBp" ? "GBP" : c);
-  const scale = (to === "GBp" ? 100 : 1) / (from === "GBp" ? 100 : 1);
-  if (norm(from) === norm(to)) return scale;
-  const q: any = await yahoo.quote(`${norm(from)}${norm(to)}=X`, {}, { validateResult: false });
-  const rate = q?.regularMarketPrice;
-  if (typeof rate !== "number" || !(rate > 0)) throw new Error(`No FX rate for ${from}->${to}`);
-  return rate * scale;
-}
 
 const isProduction = process.env.NODE_ENV === "production" || process.argv.includes("--production");
 
@@ -58,42 +42,19 @@ async function startServer() {
   });
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", marketData: "yahoo-finance", aiConfigured: Boolean(groqKey()) });
+    res.json({ status: "ok", marketData: "sec-edgar+yahoo", aiConfigured: Boolean(groqKey()) });
   });
 
-  // Live market data + fundamentals from Yahoo Finance (no API key needed).
+  // Live price + reported financials (SEC EDGAR / Yahoo Finance, see server/marketService.ts).
   app.get("/api/market/:ticker", async (req, res) => {
     const ticker = cleanTicker(req.params.ticker);
     if (!ticker) return res.status(400).json({ error: "Invalid ticker symbol." });
-
     try {
-      const summary: any = await yahoo.quoteSummary(ticker, { modules: [...SUMMARY_MODULES] }, { validateResult: false });
-      if (!summary?.price?.regularMarketPrice) {
-        return res.status(404).json({ error: `No market data found for "${ticker}". Check the symbol (e.g. RELIANCE.NS for NSE, 7203.T for Tokyo).` });
-      }
-
-      const period1 = new Date();
-      period1.setUTCFullYear(period1.getUTCFullYear() - 3);
-      let annual: any[] = [];
-      try {
-        annual = await yahoo.fundamentalsTimeSeries(ticker, { period1, type: "annual", module: "all" }, { validateResult: false });
-      } catch (e) {
-        console.warn(`fundamentalsTimeSeries failed for ${ticker}:`, (e as Error).message);
-      }
-
-      const tradeCcy = summary.price.currency ?? "USD";
-      const finCcy = summary.financialData?.financialCurrency ?? tradeCcy;
-      const fx = await fxRate(finCcy, tradeCcy);
-
-      res.json(mapYahooToCompany(ticker, { summary, annual, fx }));
+      res.json(await getCompany(ticker));
     } catch (error: any) {
+      const status = error instanceof MarketDataError ? error.status : 500;
       console.error(`Market data error for ${ticker}:`, error?.message ?? error);
-      const notFound = /not found|No fundamentals|Quote not found/i.test(error?.message ?? "");
-      res.status(notFound ? 404 : 502).json({
-        error: notFound
-          ? `No market data found for "${ticker}".`
-          : `Market data provider unavailable for "${ticker}": ${error?.message ?? "unknown error"}`,
-      });
+      res.status(status === 404 ? 404 : 502).json({ error: error?.message ?? "Market data unavailable." });
     }
   });
 
