@@ -2,19 +2,20 @@ import YahooFinance from "yahoo-finance2";
 import { CompanyData } from "../src/types";
 import { mapYahooToCompany } from "../src/lib/marketData";
 import { mapSecToCompany, SecCompanyFacts, SecSubmissions } from "../src/lib/secFacts";
-import { Quote, parseYahooChart, parseStooqCsv, parseFinnhubQuote, stooqSymbol } from "../src/lib/quote";
+import { Quote, parseYahooChart, parseStooqCsv, parseFinnhubQuote, parseCnbcQuote, stooqSymbol } from "../src/lib/quote";
 
 /**
  * Market data with fallbacks, so one provider blocking the server doesn't break the app.
  *
  *   Financials: SEC EDGAR filings (US-listed companies, no key)  ->  Yahoo Finance quoteSummary
- *   Price:      Yahoo chart API (no crumb)  ->  Stooq (US, no key)  ->  Finnhub (US, FINNHUB_API_KEY)
+ *   Price:      Finnhub (US, if FINNHUB_API_KEY is set)  ->  Yahoo chart API  ->  CNBC (US)  ->  Stooq (US)
  *
  * Every number shown comes from one of these sources and is labelled with it; nothing is estimated.
  */
 
 export class MarketDataError extends Error {
-  constructor(public status: number, message: string) {
+  /** noFallback: the failure would repeat on every other source (e.g. no price anywhere). */
+  constructor(public status: number, message: string, public noFallback = false) {
     super(message);
   }
 }
@@ -40,11 +41,16 @@ function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** fetch with a timeout and one polite retry on 429 / 5xx. */
-async function request(url: string, headers: Record<string, string>): Promise<Response> {
+/** fetch with a timeout and (unless retry is false) one polite retry on 429 / 5xx. */
+async function request(url: string, headers: Record<string, string>, retry = true): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
-    if ((res.status === 429 || res.status >= 500) && attempt === 0) {
+    let res: Response;
+    try {
+      res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+    } catch (e: any) {
+      throw new MarketDataError(502, `${new URL(url).host} could not be reached (${e?.cause?.code ?? e?.name ?? "network error"})`);
+    }
+    if (retry && (res.status === 429 || res.status >= 500) && attempt === 0) {
       await sleep(1200 + Math.random() * 800);
       continue;
     }
@@ -61,13 +67,35 @@ async function getJson(url: string, headers: Record<string, string>) {
 // ---------- prices ----------
 const isUsTicker = (t: string) => /^[A-Z][A-Z0-9-]{0,9}$/.test(t);
 
-async function yahooChartQuote(symbol: string): Promise<Quote> {
+// Yahoo blocks some cloud IPs outright (HTTP 429 on every endpoint). After a 429 we skip Yahoo
+// for a while rather than hammering it, which only extends the block.
+let yahooCooldownUntil = 0;
+const YAHOO_COOLDOWN_MS = 10 * 60_000;
+const yahooCoolingDown = () => yahooCooldownUntil > Date.now();
+const coolYahoo = () => (yahooCooldownUntil = Date.now() + YAHOO_COOLDOWN_MS);
+
+async function yahooChartQuote(symbol: string, { ignoreCooldown = false } = {}): Promise<Quote> {
+  if (yahooCoolingDown() && !ignoreCooldown) throw new MarketDataError(503, "Yahoo Finance skipped (blocking this server, cooling down)");
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
-  const res = await request(url, { "User-Agent": BROWSER_UA, Accept: "application/json" });
+  const res = await request(url, { "User-Agent": BROWSER_UA, Accept: "application/json" }, false);
+  if (res.status === 429) {
+    coolYahoo();
+    throw new MarketDataError(503, "Yahoo Finance returned HTTP 429 (Too Many Requests)");
+  }
   if (res.status === 404) throw new MarketDataError(404, `Yahoo Finance has no symbol "${symbol}"`);
   if (!res.ok) throw new MarketDataError(res.status, `Yahoo Finance returned HTTP ${res.status}`);
   const q = parseYahooChart(await res.json());
   if (!q) throw new MarketDataError(404, `Yahoo Finance has no price for "${symbol}"`);
+  return q;
+}
+
+async function cnbcQuote(symbol: string): Promise<Quote> {
+  if (!isUsTicker(symbol)) throw new MarketDataError(404, "CNBC lookup covers US tickers only");
+  const url =
+    "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol" +
+    `?symbols=${encodeURIComponent(symbol.replace("-", "."))}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json`;
+  const q = parseCnbcQuote(await getJson(url, { "User-Agent": BROWSER_UA }));
+  if (!q) throw new MarketDataError(404, `CNBC has no price for "${symbol}"`);
   return q;
 }
 
@@ -76,7 +104,9 @@ async function stooqQuote(symbol: string): Promise<Quote> {
   if (!s) throw new MarketDataError(404, "Stooq covers US tickers only");
   const res = await request(`https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcvn&h&e=csv`, { "User-Agent": BROWSER_UA });
   if (!res.ok) throw new MarketDataError(res.status, `Stooq returned HTTP ${res.status}`);
-  const q = parseStooqCsv(await res.text());
+  const text = await res.text();
+  const q = parseStooqCsv(text);
+  if (!q && !/^symbol,/i.test(text.trim())) throw new MarketDataError(502, `Stooq returned an unexpected page ("${text.trim().slice(0, 60)}")`);
   if (!q) throw new MarketDataError(404, `Stooq has no price for "${symbol}"`);
   return q;
 }
@@ -95,14 +125,21 @@ async function finnhubQuote(symbol: string): Promise<Quote> {
 export function getQuote(symbol: string): Promise<Quote> {
   return memo(`quote:${symbol}`, 60_000, async () => {
     const errors: string[] = [];
-    for (const source of [yahooChartQuote, stooqQuote, finnhubQuote]) {
+    const sources = [
+      ...(process.env.FINNHUB_API_KEY?.trim() ? [finnhubQuote] : []),
+      yahooChartQuote,
+      cnbcQuote,
+      stooqQuote,
+    ];
+    if (!process.env.FINNHUB_API_KEY?.trim()) errors.push("Finnhub not configured (FINNHUB_API_KEY)");
+    for (const source of sources) {
       try {
         return await source(symbol);
       } catch (e: any) {
         errors.push(e.message);
       }
     }
-    const notFound = errors.every(m => /no symbol|no price|covers US|not set/i.test(m));
+    const notFound = errors.every(m => /no symbol|no price|covers US|not configured/i.test(m));
     throw new MarketDataError(notFound ? 404 : 502, `No price available for "${symbol}" (${errors.join("; ")})`);
   });
 }
@@ -136,15 +173,17 @@ async function secCompany(ticker: string): Promise<CompanyData | null> {
   const [facts, subs, quote] = await Promise.all([
     companyFacts(cik),
     submissions(cik).catch(() => undefined),
-    getQuote(ticker),
+    getQuote(ticker).catch((e: Error) => e),
   ]);
+  if (quote instanceof Error) {
+    // Financials are fine; only the price is missing, and Yahoo's other endpoints would fail the same way.
+    throw new MarketDataError(502, `Financials loaded from SEC filings, but no price source answered: ${quote.message.replace(/^No price available for "[^"]+" /, "")}`, true);
+  }
   return mapSecToCompany(ticker, facts, subs, quote);
 }
 
 // ---------- Yahoo quoteSummary (non-US companies, and fallback) ----------
 const SUMMARY_MODULES = ["price", "summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile"] as const;
-let yahooCooldownUntil = 0;
-
 async function fxRate(from: string, to: string): Promise<number> {
   const norm = (c: string) => (c === "GBp" ? "GBP" : c);
   const scale = (to === "GBp" ? 100 : 1) / (from === "GBp" ? 100 : 1);
@@ -155,7 +194,7 @@ async function fxRate(from: string, to: string): Promise<number> {
 
 async function yahooCompany(ticker: string): Promise<CompanyData> {
   const wait = yahooCooldownUntil - Date.now();
-  if (wait > 0) {
+  if (yahooCoolingDown()) {
     throw new MarketDataError(503, `Yahoo Finance is blocking requests from this server; retry in about ${Math.ceil(wait / 60_000)} min`);
   }
   try {
@@ -176,7 +215,7 @@ async function yahooCompany(ticker: string): Promise<CompanyData> {
     const msg = String(e?.message ?? e);
     // Cloud hosts' shared IPs often get 429s on Yahoo's cookie/crumb handshake. Back off instead of retrying.
     if (/429|Too Many Requests|crumb|set-cookie/i.test(msg)) {
-      yahooCooldownUntil = Date.now() + 10 * 60_000;
+      coolYahoo();
       throw new MarketDataError(503, `Yahoo Finance is blocking requests from this server (${msg.slice(0, 80)})`);
     }
     if (/not found|No fundamentals/i.test(msg)) throw new MarketDataError(404, `Yahoo Finance has no data for "${ticker}"`);
@@ -194,6 +233,7 @@ export function getCompany(ticker: string): Promise<CompanyData> {
       if (sec) return sec;
       notFound++;
     } catch (e: any) {
+      if (e instanceof MarketDataError && e.noFallback) throw e;
       errors.push(`SEC EDGAR: ${e.message}`);
     }
     try {
@@ -207,4 +247,36 @@ export function getCompany(ticker: string): Promise<CompanyData> {
     }
     throw new MarketDataError(502, `Live data for "${ticker}" is temporarily unavailable: ${errors.join(" · ")}`);
   });
+}
+
+// ---------- diagnostics (GET /api/diagnostics) ----------
+/** Probes every source once, uncached, so a deployment can show which providers it can reach. */
+export async function diagnostics() {
+  const probe = async (fn: () => Promise<string>) => {
+    const t0 = Date.now();
+    try {
+      return { ok: true, detail: await fn(), ms: Date.now() - t0 };
+    } catch (e: any) {
+      return { ok: false, detail: String(e?.message ?? e), ms: Date.now() - t0 };
+    }
+  };
+  const price = (q: Quote) => `AAPL ${q.price} ${q.currency}`;
+  const [sec, yahooChart, cnbc, stooq, finnhub] = await Promise.all([
+    probe(async () => {
+      const map = await secTickerMap(); // www.sec.gov
+      const subs = await getJson("https://data.sec.gov/submissions/CIK0000320193.json", secHeaders());
+      return `reached www.sec.gov (${map.size} tickers) and data.sec.gov (${subs?.name ?? "?"})`;
+    }),
+    probe(async () => price(await yahooChartQuote("AAPL", { ignoreCooldown: true }))),
+    probe(async () => price(await cnbcQuote("AAPL"))),
+    probe(async () => price(await stooqQuote("AAPL"))),
+    probe(async () => price(await finnhubQuote("AAPL"))),
+  ]);
+  return {
+    commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null,
+    secUserAgentSet: Boolean(process.env.SEC_USER_AGENT?.trim()),
+    finnhubKeySet: Boolean(process.env.FINNHUB_API_KEY?.trim()),
+    yahooCoolingDown: yahooCoolingDown(),
+    sources: { "SEC EDGAR (financials)": sec, "Yahoo chart (price)": yahooChart, "CNBC (price)": cnbc, "Stooq (price)": stooq, "Finnhub (price)": finnhub },
+  };
 }

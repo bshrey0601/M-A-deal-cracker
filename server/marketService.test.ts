@@ -12,8 +12,18 @@ before(() => {
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
     if (/yahoo\.com/.test(url)) return new Response("Too Many Requests", { status: 429 });
-    if (url.endsWith("/files/company_tickers.json")) return json({ 0: { cik_str: 789019, ticker: "MSFT", title: "MICROSOFT CORP" } });
+    if (url.endsWith("/files/company_tickers.json")) {
+      return json({
+        0: { cik_str: 789019, ticker: "MSFT", title: "MICROSOFT CORP" },
+        1: { cik_str: 789019, ticker: "AAL", title: "SAME FILER, CNBC PRICE" },
+        2: { cik_str: 789019, ticker: "NOPX", title: "SAME FILER, NO PRICE ANYWHERE" },
+      });
+    }
+    if (url.includes("quote.cnbc.com") && url.includes("symbols=AAL")) {
+      return json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: "AAL", code: 0, last: "12.34", currencyCode: "USD", name: "American Airlines" }] } });
+    }
     if (url.includes("/companyfacts/CIK0000789019.json")) return json(secFacts());
+    if (url.includes("/submissions/CIK0000320193.json")) return json({ name: "Apple Inc." });
     if (url.includes("/submissions/CIK0000789019.json")) return json({ name: "MICROSOFT CORP", sicDescription: "Services-Prepackaged Software", exchanges: ["Nasdaq"] });
     if (url.includes("stooq.com") && url.includes("s=msft.us")) {
       return new Response("Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nMSFT.US,2025-10-31,22:00:09,1,1,1,500,1,MICROSOFT\n");
@@ -35,6 +45,32 @@ test("US company: SEC financials + Stooq price when Yahoo is rate-limiting", asy
   const n = calls.length;
   await getCompany("MSFT");
   assert.equal(calls.length, n);
+});
+
+test("CNBC supplies the price when Yahoo is blocked", async () => {
+  const { getCompany } = await import("./marketService");
+  const c = await getCompany("AAL");
+  assert.equal(c.currentPrice, 12.34);
+  assert.match(c.source!.provider, /SEC EDGAR.*CNBC/);
+});
+
+test("financials found but no price anywhere: says so, and doesn't retry Yahoo's other endpoints", async () => {
+  const { getCompany, MarketDataError } = await import("./marketService");
+  const before = calls.filter(u => /yahoo/.test(u)).length;
+  await assert.rejects(getCompany("NOPX"), (e: any) =>
+    e instanceof MarketDataError && /Financials loaded from SEC filings, but no price source answered/.test(e.message) && /Finnhub not configured/.test(e.message));
+  assert.equal(calls.filter(u => /yahoo/.test(u)).length, before, "Yahoo skipped while cooling down");
+});
+
+test("diagnostics reports each source without secrets", async () => {
+  const { diagnostics } = await import("./marketService");
+  const d = await diagnostics();
+  assert.equal(d.sources["SEC EDGAR (financials)"].ok, true);
+  assert.equal(d.sources["Yahoo chart (price)"].ok, false);
+  assert.match(d.sources["Yahoo chart (price)"].detail, /429/);
+  assert.equal(d.sources["Stooq (price)"].ok, false);
+  assert.equal(d.finnhubKeySet, false);
+  assert.ok(!JSON.stringify(d).includes("token="));
 });
 
 test("non-US company while Yahoo is rate-limiting: clear error, then a cool-down without hammering Yahoo", async () => {

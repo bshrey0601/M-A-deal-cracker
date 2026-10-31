@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { getCompany, MarketDataError } from "./server/marketService";
+import { getCompany, diagnostics, MarketDataError } from "./server/marketService";
 
 dotenv.config();
 
@@ -42,7 +42,17 @@ async function startServer() {
   });
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", marketData: "sec-edgar+yahoo", aiConfigured: Boolean(groqKey()) });
+    res.json({
+      status: "ok",
+      commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null,
+      marketData: "sec-edgar+yahoo",
+      aiConfigured: Boolean(groqKey()),
+    });
+  });
+
+  // Which data providers this deployment can reach right now (no secrets in the output).
+  app.get("/api/diagnostics", async (_req, res) => {
+    res.json(await diagnostics());
   });
 
   // Live price + reported financials (SEC EDGAR / Yahoo Finance, see server/marketService.ts).
