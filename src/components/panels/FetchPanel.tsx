@@ -12,6 +12,8 @@ export function FetchPanel() {
   const [tkA, setTkA] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // The last live-data error, kept so a failed AI estimate doesn't hide the real cause.
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [offerEstimate, setOfferEstimate] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   // Tickers whose filings loaded but no live price source answered, and the prices the user typed.
@@ -39,6 +41,7 @@ export function FetchPanel() {
     
     setLoading(true);
     setOfferEstimate(false);
+    if (!useEstimate) setLiveError(null);
     setStatus(`Fetching ${tkT} and ${tkA}...`);
     
     try {
@@ -78,8 +81,13 @@ export function FetchPanel() {
         ? "Loaded AI estimates. These are NOT verified figures."
         : "Loaded live market data.");
     } catch (err: any) {
-      setStatus(`Error: ${err.message}`);
-      if (!useEstimate && err.message !== BACKEND_MISSING) setOfferEstimate(true);
+      if (useEstimate) {
+        setStatus(liveError ? `Error: ${liveError} · The AI estimate also failed: ${err.message}` : `Error: ${err.message}`);
+      } else {
+        setLiveError(err.message);
+        setStatus(`Error: ${err.message}`);
+        if (err.message !== BACKEND_MISSING) setOfferEstimate(true);
+      }
     } finally {
       setLoading(false);
     }

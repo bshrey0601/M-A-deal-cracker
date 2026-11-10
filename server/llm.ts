@@ -28,7 +28,17 @@ export function llmProvider(): LlmProvider | null {
 
 export const anthropicModel = () => env("ANTHROPIC_MODEL") ?? "claude-opus-5-5";
 export const geminiModel = () => env("GEMINI_MODEL") ?? "gemini-2.5-flash";
-export const groqModel = () => env("GROQ_MODEL") ?? "llama-3.1-8b-instant";
+// Groq retires models often (llama-3.1-8b-instant is gone). If the configured one has been
+// retired, viaGroq picks a current one from Groq's model list and remembers it.
+let groqResolvedModel: string | undefined;
+export const groqModel = () => env("GROQ_MODEL") ?? groqResolvedModel ?? "llama-3.3-70b-versatile";
+const GROQ_PREFERRED = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "meta-llama/llama-4-maverick-17b-128e-instruct"];
+
+/** Choose a chat model from Groq's live model list, preferring known good ones. */
+export function pickGroqModel(ids: string[], exclude: string): string | undefined {
+  const usable = ids.filter(id => id !== exclude && !/whisper|guard|tts|playai|distil|compound|prompt-guard/i.test(id));
+  return GROQ_PREFERRED.find(id => usable.includes(id)) ?? usable.find(id => /llama|gpt-oss|qwen|kimi/i.test(id)) ?? usable[0];
+}
 
 export function llmLabel(provider = llmProvider()): string | null {
   switch (provider) {
@@ -108,12 +118,12 @@ async function viaGemini({ system, prompt, json }: CompleteOptions): Promise<str
   }
 }
 
-async function viaGroq({ system, prompt, json }: CompleteOptions): Promise<string> {
+async function groqChat(model: string, { system, prompt, json }: CompleteOptions) {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env("GROQ_API_KEY")}` },
     body: JSON.stringify({
-      model: groqModel(),
+      model,
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt },
@@ -125,6 +135,29 @@ async function viaGroq({ system, prompt, json }: CompleteOptions): Promise<strin
     throw new LlmError(502, `Could not reach Groq: ${e.message}`);
   });
   const data: any = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+const groqModelGone = (status: number, data: any) =>
+  (status === 404 || status === 400) &&
+  /model_not_found|model_decommissioned|does not exist|decommissioned/i.test(`${data?.error?.code} ${data?.error?.message}`);
+
+async function viaGroq(opts: CompleteOptions): Promise<string> {
+  const configured = groqModel();
+  let { response, data } = await groqChat(configured, opts);
+  if (groqModelGone(response.status, data)) {
+    const list: any = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${env("GROQ_API_KEY")}` },
+    })
+      .then(r => r.json())
+      .catch(() => ({}));
+    const next = pickGroqModel((list?.data ?? []).filter((m: any) => m?.active !== false).map((m: any) => String(m.id)), configured);
+    if (next) {
+      console.warn(`Groq model ${configured} is unavailable; using ${next}. Set GROQ_MODEL to choose one.`);
+      groqResolvedModel = next;
+      ({ response, data } = await groqChat(next, opts));
+    }
+  }
   if (!response.ok) throw new LlmError(response.status, `Groq API error: ${data.error?.message ?? response.statusText}`);
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new LlmError(502, "Groq returned an empty response.");
