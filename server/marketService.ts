@@ -31,8 +31,10 @@ const yahoo = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
 // The SEC asks automated clients to identify themselves: "Name contact@email".
-const secUserAgent = () =>
-  process.env.SEC_USER_AGENT?.trim() || "M&A Deal Cracker (https://github.com/bshrey0601/M-A-deal-cracker)";
+// The SEC rejects (HTTP 403) clients without a contact email, so the default names the app's owner.
+// Set SEC_USER_AGENT on your own deployment to use your own name and email instead.
+export const DEFAULT_SEC_USER_AGENT = "Shrey Bhatt shrey.bhatt0601@gmail.com";
+const secUserAgent = () => process.env.SEC_USER_AGENT?.trim() || DEFAULT_SEC_USER_AGENT;
 
 // ---------- small TTL cache with in-flight de-duplication ----------
 const cache = new Map<string, { exp: number; value: Promise<any> }>();
@@ -72,8 +74,8 @@ async function getJson(url: string, headers: Record<string, string>, timeoutMs?:
     const host = new URL(url).host;
     // The SEC refuses clients that don't identify themselves with a contact email.
     const hint =
-      res.status === 403 && host.endsWith("sec.gov") && !process.env.SEC_USER_AGENT?.trim()
-        ? ' (set SEC_USER_AGENT to "Your Name your@email.com" on the server)'
+      res.status === 403 && host.endsWith("sec.gov")
+        ? ` (the SEC refused requests from this server; set SEC_USER_AGENT to "Your Name your@email.com"${process.env.SEC_USER_AGENT?.trim() ? " and check its value" : ""})`
         : "";
     throw new MarketDataError(res.status, `${host} returned HTTP ${res.status}${hint}`);
   }
