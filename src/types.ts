@@ -34,6 +34,16 @@ export interface CompanyData {
   source?: DataSource;
   /** Where each figure came from, so the UI can show the exact filing behind it. */
   citations?: Citations;
+  /** Automatic accuracy checks run on the figures (SEC-sourced companies only). */
+  checks?: AccuracyCheck[];
+}
+
+export interface AccuracyCheck {
+  id: string;
+  label: string;
+  /** pass = verified; warn = gap above 2% or something to review; fail = likely wrong; skipped = data not available. */
+  status: "pass" | "warn" | "fail" | "skipped";
+  detail: string;
 }
 
 /** One reported number as filed with the SEC (XBRL fact). */

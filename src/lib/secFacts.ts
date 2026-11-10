@@ -1,5 +1,9 @@
 import { Citation, Citations, CompanyData, FactCitation } from "../types";
 import { Quote } from "./quote";
+import {
+  balanceSheetCheck, citationSumCheck, datesAlignedCheck, epsCheck, filingFreshnessCheck,
+  priceCheck, restatementCheck, sanityCheck, sharesCheck,
+} from "./accuracyChecks";
 
 /**
  * Builds CompanyData from SEC EDGAR XBRL "company facts" (numbers as filed in 10-K / 10-Q
@@ -160,6 +164,16 @@ const TAGS = {
   shortTermDebt: ["ShortTermBorrowings", "CommercialPaper"],
   equity: ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
   dividendsPerShare: ["CommonStockDividendsPerShareDeclared", "CommonStockDividendsPerShareCashPaid"],
+  // Used only by the accuracy checks.
+  assets: ["Assets"],
+  liabilitiesAndEquity: ["LiabilitiesAndStockholdersEquity"],
+  liabilities: ["Liabilities"],
+  equityInclNci: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+  minorityInterest: ["MinorityInterest"],
+  temporaryEquity: ["TemporaryEquityCarryingAmountAttributableToParent", "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests"],
+  redeemableNci: ["RedeemableNoncontrollingInterestEquityCarryingAmount"],
+  epsDiluted: ["EarningsPerShareDiluted"],
+  weightedDilutedShares: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
 };
 
 /** Shares outstanding from the latest cover page (summing share classes reported on the same filing). */
@@ -220,6 +234,7 @@ export function mapSecToCompany(
   facts: SecCompanyFacts,
   submissions: SecSubmissions | undefined,
   quote: Quote,
+  now: Date = new Date(),
 ): CompanyData {
   const revenue = ltm(series(facts, TAGS.revenue));
   if (!revenue) throw new Error(`SEC filings for ${ticker} have no annual revenue in US GAAP.`);
@@ -365,6 +380,46 @@ export function mapSecToCompany(
   };
   for (const k of Object.keys(citations) as (keyof Citations)[]) if (!citations[k]) delete citations[k];
 
+  // ---- automatic accuracy checks ----
+  const val = (tags: string[]) => atF(tags)?.val;
+  const equityInclNci = val(TAGS.equityInclNci) ?? (equity !== undefined ? equity + (val(TAGS.minorityInterest) ?? 0) : undefined);
+  const tempEquity = (val(TAGS.temporaryEquity) ?? 0) + (val(TAGS.redeemableNci) ?? 0);
+  const epsFiled = ltm(series(facts, TAGS.epsDiluted, "USD/shares"));
+  const epsComparable = epsFiled && epsFiled.end === revenue.end ? epsFiled.value : undefined;
+  const wDil = series(facts, TAGS.weightedDilutedShares, "shares").filter(r => r.start && r.end === revenue.end).sort(newest)[0];
+  const usedParts = [revenue, ebitV, niV, daV, capexV].flatMap(v => v?.parts ?? []).concat(debtParts, cashParts);
+  const latestFiled = usedParts.map(p => p.fact.filed ?? "").sort().pop() || undefined;
+  const flowItems = [
+    { label: "Revenue", v: revenue, tags: TAGS.revenue },
+    { label: "Operating income", v: ebitV, tags: TAGS.ebit },
+    { label: "Net income", v: niV, tags: TAGS.netIncome },
+  ];
+  const figures = {
+    revenue: rev, ebit: ebit ?? 0, ebitda, netIncome, da: da ?? 0, capex: capex ?? 0, sharesOutstanding: sharesMn, netDebt,
+  };
+  const checks = [
+    citationSumCheck(figures, citations),
+    balanceSheetCheck({
+      date: bsDate,
+      assets: val(TAGS.assets),
+      liabilitiesAndEquity: val(TAGS.liabilitiesAndEquity),
+      liabilities: val(TAGS.liabilities),
+      equityInclNci,
+      temporaryEquity: tempEquity || undefined,
+    }),
+    restatementCheck(
+      flowItems
+        .filter(i => i.v)
+        .map(i => ({ label: i.label, used: i.v!.parts.map(p => p.fact), all: series(facts, i.tags) })),
+    ),
+    epsCheck(eps, epsComparable, revenue.isLTM ? `the last twelve months to ${revenue.end}` : `the fiscal year ended ${revenue.end}`),
+    sharesCheck(shares, wDil?.val, wDil ? `${wDil.start} to ${wDil.end}` : undefined),
+    datesAlignedCheck(debtParts.length ? debtDate : undefined, cash?.end),
+    filingFreshnessCheck(latestFiled, revenue.end, now),
+    priceCheck(quote.provider, quote.time, now),
+    sanityCheck(figures),
+  ];
+
   const name = submissions?.name ?? facts.entityName ?? quote.name ?? ticker;
   const sector = submissions?.sicDescription ?? "Unclassified";
 
@@ -409,5 +464,6 @@ export function mapSecToCompany(
       warnings,
     },
     citations,
+    checks,
   };
 }

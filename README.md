@@ -24,6 +24,16 @@ A web app for analysing a merger or acquisition between two listed companies: it
 | Share prices | **Finnhub** (US, when a key is set), then **Yahoo Finance** chart data, then **CNBC** and **Stooq** (US) | Finnhub only (free) |
 
 - Flow figures from SEC filings are **last twelve months**: latest fiscal year + current year-to-date − prior-year year-to-date. Balance-sheet figures are from the latest filing. EBITDA = operating income + D&A; net debt = borrowings − cash and short-term investments (leases excluded).
+- **Automatic accuracy checks.** Every SEC-sourced company card runs these checks and shows the result (passed, to review, failed or skipped). Gaps above 2% are flagged:
+  - the cited filings add up exactly to each figure shown
+  - the balance sheet balances (assets = liabilities + equity)
+  - no period used was restated after it was first filed
+  - computed EPS matches the diluted EPS the company filed
+  - current shares are consistent with weighted-average diluted shares
+  - debt and cash are from the same balance-sheet date
+  - the filings and the share price are recent
+  - no impossible values (e.g. operating income above revenue)
+  - revenue matches a second, independent source (Yahoo Finance). This check is skipped when Yahoo blocks the server.
 - **Click any number to see its source.** On each company card, every underlined figure opens the exact SEC filing behind it: the XBRL line item, the period, the value as filed, the form (10-K / 10-Q), the filing date, the accession number and a link to the document on SEC.gov. Calculated figures (EBITDA, margins, multiples) show their formula and link to their inputs. **All sources** lists every figure with its filing. Prices are labelled as market data (not from a filing), and Yahoo-sourced figures for non-US companies say that they aren't linked to an official filing.
 - Every company card shows its sources, the price date and any caveats (currency conversion, fields a company doesn't report). Missing data is flagged, never invented.
 - Cloud hosts' shared IP addresses are often blocked by Yahoo (HTTP 429, "Too Many Requests"). That's why US financials come from the SEC and prices have several fallbacks. For the most reliable prices on a cloud host, add a free `FINNHUB_API_KEY`. If the financials load but no price source answers, the app asks you to type in the current share price (labelled "entered by user") instead of failing. For non-US companies Yahoo is the only free source, so if Yahoo is blocking the server the app says so and backs off for 10 minutes instead of retrying.

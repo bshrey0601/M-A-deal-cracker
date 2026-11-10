@@ -40,6 +40,11 @@ test("US company: SEC financials + Stooq price when Yahoo is rate-limiting", asy
   assert.match(c.source!.provider, /SEC EDGAR.*Stooq/);
   assert.equal(Math.round(c.revenue), 291_400);
   assert.ok(calls.some(u => u.includes("data.sec.gov")), "SEC was queried");
+  // Accuracy checks run; the second-source comparison is skipped (not failed) while Yahoo blocks the server.
+  const second = c.checks!.find(x => x.id === "second-source")!;
+  assert.equal(second.status, "skipped");
+  assert.match(second.detail, /Yahoo Finance could not be reached/);
+  assert.equal(c.checks!.find(x => x.id === "citations")!.status, "pass");
 
   // Second request is served from cache: no new network calls.
   const n = calls.length;
