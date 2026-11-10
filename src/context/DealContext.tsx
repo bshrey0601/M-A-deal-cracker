@@ -23,6 +23,7 @@ const initialState: DealState = {
   },
   selectedPrecedents: [],
   peers: [],
+  livePrecedents: [],
   mc: DEFAULT_MC
 };
 

@@ -63,7 +63,7 @@ test("builds a fact sheet from a real deal state and every listed figure verifie
     deal: { offer: 625, cashPct: 50, stockPct: 50, fees: 2, finRate: 6 },
     dcf: { bear: 5, base: 10, bull: 15, ebitM: 45, wacc: 9, tgr: 3, daPct: 12, cxPct: 22, tax: 21 },
     syn: { cSell: 100, geo: 50, prc: 0, bnd: 0, rR: 50, hc: 200, proc: 100, fac: 50, it: 50, cR: 80, sev: 100, itI: 50, leg: 25 },
-    selectedPrecedents: [], peers: [], mc: DEFAULT_MC,
+    selectedPrecedents: [], peers: [], livePrecedents: [], mc: DEFAULT_MC,
   };
   const acc = computeAccretion({ target: t, acquirer: state.acquirer!, deal: state.deal, syn: state.syn, ppa: state.ppa, taxRate: 21 });
   const f = buildFacts(state, acc);

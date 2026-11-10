@@ -177,7 +177,7 @@ export const secTickerMap = () =>
 // Company facts for large filers are several MB; give the SEC more time than a price quote.
 export const SEC_TIMEOUT = 30_000;
 const pad = (cik: number) => String(cik).padStart(10, "0");
-const companyFacts = (cik: number) =>
+export const companyFacts = (cik: number) =>
   memo<SecCompanyFacts>(`sec:facts:${cik}`, 6 * 3600_000, () =>
     getJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`, secHeaders(), SEC_TIMEOUT),
   );

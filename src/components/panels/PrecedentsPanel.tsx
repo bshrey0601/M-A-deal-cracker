@@ -4,20 +4,24 @@ import { PRECEDENTS } from "../../constants";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { History, Search, CheckCircle2, TrendingUp, Filter } from "lucide-react";
 import { TradingComps } from "../TradingComps";
+import { LivePrecedents } from "../LivePrecedents";
+import { ExternalLink } from "lucide-react";
 
 export function PrecedentsPanel() {
   const { state, setState } = useDeal();
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
+  // Built-in deals first, then deals read from SEC filings; selections are indices into this list.
+  const all = useMemo(() => [...PRECEDENTS, ...state.livePrecedents], [state.livePrecedents]);
   const filteredPrecedents = useMemo(() => {
-    return PRECEDENTS.filter(d => {
+    return all.filter(d => {
       const matchesFilter = filter === "all" || d.sector === filter || 
         (filter === "india" && d.deal.includes("(India"));
       const matchesSearch = d.deal.toLowerCase().includes(search.toLowerCase());
       return matchesFilter && matchesSearch;
     });
-  }, [filter, search]);
+  }, [all, filter, search]);
 
   const togglePrecedent = (idx: number) => {
     setState(prev => {
@@ -34,7 +38,7 @@ export function PrecedentsPanel() {
     });
   };
 
-  const selectedDeals = state.selectedPrecedents.map(i => PRECEDENTS[i]);
+  const selectedDeals = state.selectedPrecedents.map(i => all[i]).filter(Boolean);
   const stats = useMemo(() => {
     if (selectedDeals.length === 0) return null;
     
@@ -62,6 +66,7 @@ export function PrecedentsPanel() {
 
   const filters = [
     { id: "all", label: "All Sectors" },
+    ...(state.livePrecedents.length ? [{ id: "sec", label: `SEC filings (${state.livePrecedents.length})` }] : []),
     { id: "tech", label: "Tech" },
     { id: "telecom", label: "Telecom" },
     { id: "energy", label: "Energy" },
@@ -80,6 +85,7 @@ export function PrecedentsPanel() {
       </header>
 
       {state.target && <TradingComps />}
+      {state.target && <LivePrecedents onShow={() => setFilter("sec")} />}
 
       <div className="bg-bg-card border border-border-alt rounded-2xl p-6 relative overflow-hidden">
         <h3 className="text-[10px] font-bold uppercase tracking-[4px] text-accent-blue mb-6">Database Environment</h3>
@@ -135,7 +141,7 @@ export function PrecedentsPanel() {
             </thead>
             <tbody className="text-text-secondary">
               {filteredPrecedents.map((deal) => {
-                const globalIdx = PRECEDENTS.indexOf(deal);
+                const globalIdx = all.indexOf(deal);
                 const isSelected = state.selectedPrecedents.includes(globalIdx);
                 
                 return (
@@ -157,7 +163,12 @@ export function PrecedentsPanel() {
                          </div>
                          <div className="flex flex-col">
                            <span className={cn("text-[12px] font-bold group-hover:text-text-primary transition-colors", isSelected && "text-accent-blue")}>{deal.deal}</span>
-                           <span className="text-[9px] text-text-muted opacity-50 uppercase">{deal.sector}</span>
+                           {deal.sec ? (
+                             <a href={deal.sec.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={deal.sec.offerQuote}
+                               className="text-[9px] text-accent-blue hover:underline inline-flex items-center gap-1">
+                               SEC {deal.sec.form} · filed {deal.sec.filed} <ExternalLink size={9} />
+                             </a>
+                           ) : <span className="text-[9px] text-text-muted opacity-50 uppercase">{deal.sector}</span>}
                          </div>
                       </div>
                     </td>

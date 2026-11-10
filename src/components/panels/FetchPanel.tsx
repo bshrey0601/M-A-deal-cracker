@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { PRECEDENTS } from "../../constants";
 import { useDeal } from "../../context/DealContext";
 import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../services/dataService";
 import { CitedField, CompanyData } from "../../types";
@@ -68,6 +69,9 @@ export function FetchPanel() {
         // Peers belong to one target: a new target gets a fresh search.
         peers: prev.target?.ticker === target.ticker ? prev.peers : [],
         peerInfo: prev.target?.ticker === target.ticker ? prev.peerInfo : undefined,
+        livePrecedents: prev.target?.ticker === target.ticker ? prev.livePrecedents : [],
+        livePrecedentsInfo: prev.target?.ticker === target.ticker ? prev.livePrecedentsInfo : undefined,
+        selectedPrecedents: prev.target?.ticker === target.ticker ? prev.selectedPrecedents : prev.selectedPrecedents.filter(i => i < PRECEDENTS.length),
         deal: {
           ...prev.deal,
           offer: +(target.currentPrice * 1.25).toFixed(2)
