@@ -13,7 +13,7 @@ A web app for analysing a merger or acquisition between two listed companies: it
 | **Market Cross-Check** | Benchmarks the offer against a curated set of precedent transactions. |
 | **AI Deal Engine** | 5-year unlevered DCF with bear/base/bull scenarios and a WACC × terminal-growth sensitivity grid. Tax rate, D&A and CapEx are editable and flow through every cell. |
 | **Deal Structuring** | Cash/stock mix, financing cost, synergies with realisation rates, PPA (goodwill, intangibles, amortisation) and pro-forma EPS accretion/dilution with a sensitivity table. |
-| **Thesis & Review** | Board-style investment memo written by an LLM from the model's figures, exportable to PDF. |
+| **Thesis & Review** | Football field chart of implied value per share by method (52-week range, DCF bear-to-bull and WACC/growth sensitivity, precedent EV/EBITDA, EV/Revenue and control premiums as 25th–75th percentile ranges), with the offer and today's price marked. Below it, a board-style investment memo written by an LLM from the model's figures, exportable to PDF. |
 
 ### Where the numbers come from
 
