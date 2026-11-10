@@ -2,6 +2,7 @@ import YahooFinance from "yahoo-finance2";
 import { CompanyData } from "../src/types";
 import { mapYahooToCompany } from "../src/lib/marketData";
 import { mapSecToCompany, SecCompanyFacts, SecSubmissions } from "../src/lib/secFacts";
+import { secondSourceCheck } from "../src/lib/accuracyChecks";
 import { Quote, parseYahooChart, parseStooqCsv, parseFinnhubQuote, parseCnbcQuote, stooqSymbol } from "../src/lib/quote";
 
 /**
@@ -204,7 +205,33 @@ async function secCompany(ticker: string, manualPrice?: number): Promise<Company
       true,
     );
   }
-  return mapSecToCompany(ticker, facts, subs, quote);
+  const company = mapSecToCompany(ticker, facts, subs, quote);
+  // Accuracy check against an independent provider. Best effort: never blocks the result.
+  company.checks?.push(secondSourceCheck(company.revenue, await yahooRevenue(ticker)));
+  return company;
+}
+
+/** Yahoo Finance's trailing-twelve-month revenue (USD millions), for the second-source check. */
+function yahooRevenue(ticker: string): Promise<{ provider: string; revenueMn?: number; error?: string }> {
+  const provider = "Yahoo Finance";
+  if (yahooCoolingDown()) return Promise.resolve({ provider, error: "Yahoo is blocking this server right now" });
+  return memo(`yahoo:rev:${ticker}`, 6 * 3600_000, async () => {
+    const summary: any = await Promise.race([
+      yahoo.quoteSummary(ticker, { modules: ["financialData"] }, { validateResult: false }),
+      sleep(5000).then(() => {
+        throw new Error("timed out");
+      }),
+    ]);
+    const fd = summary?.financialData ?? {};
+    const raw = typeof fd.totalRevenue === "object" ? fd.totalRevenue?.raw : fd.totalRevenue;
+    if (fd.financialCurrency && fd.financialCurrency !== "USD") throw new Error(`reports in ${fd.financialCurrency}`);
+    if (!(raw > 0)) throw new Error("no revenue figure");
+    return { provider, revenueMn: raw / 1e6 };
+  }).catch((e: any) => {
+    const msg = String(e?.message ?? e);
+    if (/429|Too Many Requests|crumb|set-cookie/i.test(msg)) coolYahoo();
+    return { provider, error: msg.slice(0, 80) };
+  });
 }
 
 // ---------- Yahoo quoteSummary (non-US companies, and fallback) ----------

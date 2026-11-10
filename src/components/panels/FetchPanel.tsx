@@ -3,6 +3,7 @@ import { useDeal } from "../../context/DealContext";
 import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../services/dataService";
 import { CitedField, CompanyData } from "../../types";
 import { Cited, SourceDialog } from "../SourceDialog";
+import { AccuracyChecks } from "../AccuracyChecks";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
@@ -268,6 +269,7 @@ function CompanyCard({ company, type, color }: { company: CompanyData, type: str
       <p className="text-[11px] text-text-muted mb-3 leading-relaxed bg-bg/40 p-2 rounded border border-border-alt/30 select-none italic font-mono truncate">{company.description}</p>
 
       <SourceBadge company={company} />
+      <AccuracyChecks company={company} />
 
       <div className="flex items-center justify-between mb-3 text-[10px] text-text-muted">
         <span>Click any underlined number to see the filing it comes from.</span>

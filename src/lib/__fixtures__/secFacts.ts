@@ -57,6 +57,23 @@ export const secFacts = (): SecCompanyFacts => ({
       LongTermDebtNoncurrent: { units: { USD: [instant("2025-09-30", 40_000)] } },
       LongTermDebtCurrent: { units: { USD: [instant("2025-09-30", 2_900)] } },
       StockholdersEquity: { units: { USD: [instant("2025-09-30", 363_000)] } },
+      Assets: { units: { USD: [instant("2025-09-30", 563_000)] } },
+      Liabilities: { units: { USD: [instant("2025-09-30", 200_000)] } },
+      LiabilitiesAndStockholdersEquity: { units: { USD: [instant("2025-09-30", 563_000)] } },
+      EarningsPerShareDiluted: {
+        units: {
+          "USD/shares": [
+            { start: "2023-07-01", end: "2024-06-30", val: 11.8, form: "10-K", filed: "2024-07-30", accn: ACCN.k24 },
+            { start: "2024-07-01", end: "2025-06-30", val: 13.7, form: "10-K", filed: "2025-07-30", accn: ACCN.k25 },
+            { start: "2024-07-01", end: "2024-09-30", val: 3.3, form: "10-Q", filed: "2024-10-30", accn: ACCN.q125 },
+            { start: "2025-07-01", end: "2025-09-30", val: 3.72, form: "10-Q", filed: "2025-10-29", accn: ACCN.q126 },
+            { start: "2024-07-01", end: "2024-09-30", val: 3.3, form: "10-Q", filed: "2025-10-29", accn: ACCN.q126 },
+          ],
+        },
+      },
+      WeightedAverageNumberOfDilutedSharesOutstanding: {
+        units: { shares: [{ start: "2025-07-01", end: "2025-09-30", val: m(7_466), form: "10-Q", filed: "2025-10-29", accn: ACCN.q126 }] },
+      },
     },
   },
 });
