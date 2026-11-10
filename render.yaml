@@ -9,6 +9,10 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: SEC_USER_AGENT

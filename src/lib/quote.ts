@@ -68,3 +68,22 @@ export function parseFinnhubQuote(json: any): Quote | null {
     time: typeof json.t === "number" && json.t > 0 ? new Date(json.t * 1000) : undefined,
   };
 }
+
+/** CNBC quote web service (US symbols): numbers arrive as formatted strings, e.g. "1,234.56". */
+export function parseCnbcQuote(json: any): Quote | null {
+  const q = json?.FormattedQuoteResult?.FormattedQuote?.[0];
+  const n = (v: unknown) => pos(typeof v === "string" ? Number(v.replace(/[,%$]/g, "")) : v);
+  const price = n(q?.last);
+  if (!q || price === undefined || (q.code !== undefined && Number(q.code) !== 0)) return null;
+  const time = q.last_time ? new Date(q.last_time) : undefined;
+  return {
+    provider: "CNBC",
+    price,
+    currency: q.currencyCode || "USD",
+    time: time && !isNaN(time.getTime()) ? time : undefined,
+    name: q.name,
+    exchange: q.exchange,
+    fiftyTwoWeekHigh: n(q.yrhiprice),
+    fiftyTwoWeekLow: n(q.yrloprice),
+  };
+}

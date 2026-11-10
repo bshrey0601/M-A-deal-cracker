@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseYahooChart, parseStooqCsv, parseFinnhubQuote, stooqSymbol } from "./quote";
+import { parseYahooChart, parseStooqCsv, parseFinnhubQuote, parseCnbcQuote, stooqSymbol } from "./quote";
 
 test("Yahoo chart meta", () => {
   const q = parseYahooChart({ chart: { result: [{ meta: {
@@ -27,4 +27,15 @@ test("Stooq CSV, including unknown symbols", () => {
 test("Finnhub quote", () => {
   assert.equal(parseFinnhubQuote({ c: 416.06, t: 1_760_126_400 })?.price, 416.06);
   assert.equal(parseFinnhubQuote({ c: 0, t: 0 }), null);
+});
+
+test("CNBC quote with formatted numbers", () => {
+  const q = parseCnbcQuote({ FormattedQuoteResult: { FormattedQuote: [{
+    symbol: "MSFT", code: 0, name: "Microsoft Corp", exchange: "NASDAQ", last: "1,416.06", currencyCode: "USD",
+    last_time: "2025-10-10T16:00:00.000-0400", yrhiprice: "1,468.35", yrloprice: "324.39",
+  }] } })!;
+  assert.equal(q.price, 1416.06);
+  assert.equal(q.fiftyTwoWeekHigh, 1468.35);
+  assert.equal(q.time?.toISOString(), "2025-10-10T20:00:00.000Z");
+  assert.equal(parseCnbcQuote({ FormattedQuoteResult: { FormattedQuote: [{ symbol: "ZZZZ", code: 1 }] } }), null);
 });
