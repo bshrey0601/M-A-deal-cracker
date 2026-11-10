@@ -3,6 +3,7 @@ import { useDeal } from "../../context/DealContext";
 import { PRECEDENTS } from "../../constants";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { History, Search, CheckCircle2, TrendingUp, Filter } from "lucide-react";
+import { TradingComps } from "../TradingComps";
 
 export function PrecedentsPanel() {
   const { state, setState } = useDeal();
@@ -77,6 +78,8 @@ export function PrecedentsPanel() {
           <p className="text-text-muted text-sm italic">Precedent Transaction Database · 2018–2024 Actuals</p>
         </div>
       </header>
+
+      {state.target && <TradingComps />}
 
       <div className="bg-bg-card border border-border-alt rounded-2xl p-6 relative overflow-hidden">
         <h3 className="text-[10px] font-bold uppercase tracking-[4px] text-accent-blue mb-6">Database Environment</h3>

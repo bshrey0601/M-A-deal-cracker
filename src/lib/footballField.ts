@@ -1,5 +1,9 @@
 import { CompanyData, DealState, PrecedentDeal } from "../types";
 import { computeDCF } from "./dcf";
+import { median, percentile } from "./stats";
+import { impliedPrice, meaningful } from "./peers";
+
+export { percentile };
 
 /**
  * Football field: implied value per target share from each method, as low–high ranges,
@@ -15,23 +19,9 @@ export interface FieldRow {
   basis: string;
 }
 
-const median = (a: number[]) => {
-  const s = [...a].sort((x, y) => x - y);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
-
-/** Linear-interpolated percentile (p in 0..1). */
-export const percentile = (a: number[], p: number) => {
-  const s = [...a].sort((x, y) => x - y);
-  const i = (s.length - 1) * p;
-  const f = Math.floor(i);
-  return s[f] + (s[Math.min(f + 1, s.length - 1)] - s[f]) * (i - f);
-};
-
 /**
- * Range of a set of deal figures. With 4+ deals use the interquartile range (25th–75th percentile),
- * the usual banker convention, so one outlier deal can't stretch the chart; with fewer use min–max.
+ * Range of a set of multiples. With 4+ values use the interquartile range (25th–75th percentile),
+ * the usual banker convention, so one outlier can't stretch the chart; with fewer use min–max.
  */
 function spread(v: number[]) {
   const iqr = v.length >= 4;
@@ -73,6 +63,17 @@ export function footballField(state: DealState, precedents: PrecedentDeal[]): Fi
   }
   if (sens.length === 4) {
     rows.push({ method: "DCF sensitivity (WACC ±1%, growth ±0.5%)", low: Math.min(...sens), high: Math.max(...sens), mid: computeDCF(state.dcf.base, state.dcf, t)?.price, basis: "Base case re-run with WACC one point higher/lower and terminal growth half a point higher/lower." });
+  }
+
+  // Trading comps: peers' current multiples applied to the target's own figures.
+  const peers = (state.peers ?? []).filter(p => p.included);
+  for (const [key, label, metric] of [["evEbitda", "EV/EBITDA", "EBITDA, less net debt"], ["evRevenue", "EV/Revenue", "revenue, less net debt"], ["pe", "P/E", "net income"]] as const) {
+    const v = peers.map(p => p[key]).filter(x => meaningful(key, x));
+    if (!v.length) continue;
+    const s = spread(v);
+    const [low, high, mid] = [s.low, s.high, s.mid].map(m => impliedPrice(key, m, t));
+    if (![low, high, mid].every(Number.isFinite)) continue;
+    rows.push({ method: `Trading comps: ${label}`, low: Math.min(low, high), high: Math.max(low, high), mid, basis: `${s.label(v.length, "x").replace("selected deal(s)", "peer(s)")} applied to the target's ${metric}.` });
   }
 
   const deals = state.selectedPrecedents.map(i => precedents[i]).filter(Boolean);

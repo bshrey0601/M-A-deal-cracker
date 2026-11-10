@@ -20,7 +20,8 @@ const initialState: DealState = {
     hc: 0, proc: 0, fac: 0, it: 0, cR: 75,
     sev: 0, itI: 0, leg: 0
   },
-  selectedPrecedents: []
+  selectedPrecedents: [],
+  peers: []
 };
 
 interface DealContextType {

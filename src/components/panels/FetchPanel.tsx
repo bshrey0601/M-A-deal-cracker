@@ -65,6 +65,9 @@ export function FetchPanel() {
         ...prev,
         target,
         acquirer,
+        // Peers belong to one target: a new target gets a fresh search.
+        peers: prev.target?.ticker === target.ticker ? prev.peers : [],
+        peerInfo: prev.target?.ticker === target.ticker ? prev.peerInfo : undefined,
         deal: {
           ...prev.deal,
           offer: +(target.currentPrice * 1.25).toFixed(2)
