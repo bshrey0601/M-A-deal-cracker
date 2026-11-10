@@ -9,6 +9,7 @@ import DOMPurify from "dompurify";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { buildFacts, factSheet, summarizeCheck, CheckedNumber } from "../../lib/factCheck";
 import { annotateMemo } from "../../lib/annotateMemo";
+import { FootballField } from "../FootballField";
 
 export function SummaryPanel() {
   const { state, updateSection } = useDeal();
@@ -189,6 +190,8 @@ ${factSheet(facts, state.target!.currency)}
          <StatsCard label="Total Synergies" val={`${state.target.currency}${fmt(acc.totalSynergies, 1)}M`} sub="Run-Rate, Realized" accent="accent-green" />
          <StatsCard label="Confidence Score" val={`${health}%`} sub="Data Integrity" active />
       </div>
+
+      <FootballField state={state} />
 
       <section className="bg-bg-card border border-border-alt rounded-2xl p-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 pointer-events-none">
