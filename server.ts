@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import { getCompany, diagnostics, MarketDataError } from "./server/marketService";
+import { getMarketInputs } from "./server/marketInputs";
 import { complete, llmLabel, LlmError, NO_AI_KEY, parseJsonReply } from "./server/llm";
 
 dotenv.config();
@@ -54,6 +55,11 @@ async function startServer() {
   // Which data providers this deployment can reach right now (no secrets in the output).
   app.get("/api/diagnostics", async (_req, res) => {
     res.json({ ...(await diagnostics()), aiProvider: llmLabel() });
+  });
+
+  // Live cost-of-capital inputs: 10-year Treasury, Damodaran ERP, country risk premiums and industry betas.
+  app.get("/api/market-inputs", async (_req, res) => {
+    res.json(await getMarketInputs());
   });
 
   // Live price + reported financials (SEC EDGAR / Yahoo Finance, see server/marketService.ts).
