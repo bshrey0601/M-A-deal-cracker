@@ -1,34 +1,87 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { apiUrl } from "../../lib/api";
+import { MarketInputs, Sourced } from "../../lib/marketInputs";
 import { useDeal } from "../../context/DealContext";
 import { DAMO_BETAS, COUNTRY_DATA } from "../../constants";
 import { cn, fmt } from "../../lib/utils";
-import { Calculator, Info, CheckCircle2, Zap } from "lucide-react";
+import { Calculator, Info, CheckCircle2, Zap, ExternalLink } from "lucide-react";
+
+type InputKey = "rfr" | "erp" | "crp" | "beta";
+const BUILT_IN = "Built-in default (not live)";
 
 export function WaccPanel() {
   const { state, updateSection } = useDeal();
+  const [live, setLive] = useState<MarketInputs | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [sector, setSector] = useState(Object.keys(DAMO_BETAS)[0]);
-  const [country, setCountry] = useState(Object.keys(COUNTRY_DATA)[0]);
-  
+  const [country, setCountry] = useState("usa");
+  // Inputs the user typed over; they keep the user's value and are labelled as edited.
+  const [edited, setEdited] = useState<Set<InputKey>>(new Set());
+
   const [inputs, setInputs] = useState({
     dlev: 20,
     cod: 8.5,
     size: 2.0,
     specific: 1.0,
-    rfr: 7.15,
-    erp: 4.60,
-    crp: 2.15,
+    rfr: COUNTRY_DATA.usa.rfr,
+    erp: COUNTRY_DATA.usa.erp,
+    crp: 0,
     tax: 25
   });
+  const edit = (k: keyof typeof inputs, v: number) => {
+    setInputs(p => ({ ...p, [k]: v }));
+    if (k === "rfr" || k === "erp" || k === "crp") setEdited(e => new Set(e).add(k));
+  };
+
+  // Live inputs: 10-year Treasury, Damodaran ERP, country risk premiums and industry betas.
+  useEffect(() => {
+    fetch(apiUrl("/api/market-inputs"))
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((m: MarketInputs) => {
+        setLive(m);
+        if (m.betas?.value.length) setSector(m.betas.value.find(b => /software/i.test(b.industry))?.industry ?? m.betas.value[0].industry);
+        if (m.countries?.value.length) setCountry(m.countries.value.find(c => /^united states/i.test(c.country))?.country ?? m.countries.value[0].country);
+        setInputs(p => ({
+          ...p,
+          rfr: m.riskFree?.value ?? p.rfr,
+          erp: m.erp?.value ?? p.erp,
+        }));
+        if (m.errors.length) setLiveError(m.errors.join(" · "));
+      })
+      .catch(e => setLiveError(`Live inputs unavailable (${e.message}); using built-in defaults.`));
+  }, []);
+
+  const liveBetas = live?.betas?.value;
+  const liveCountries = live?.countries?.value;
+  const sectorOptions = liveBetas
+    ? liveBetas.map(b => ({ key: b.industry, label: `${b.industry} (β ${b.unleveredBeta.toFixed(2)})`, beta: b.unleveredBeta }))
+    : Object.entries(DAMO_BETAS).map(([key, v]) => ({ key, label: v.label, beta: v.beta }));
+  const countryOptions = liveCountries
+    ? liveCountries.map(c => ({ key: c.country, label: c.country, crp: c.crp }))
+    : Object.entries(COUNTRY_DATA).map(([key, v]) => ({ key, label: v.label, crp: v.crp }));
+  const beta = sectorOptions.find(o => o.key === sector)?.beta ?? sectorOptions[0].beta;
+
+  // Selecting a country sets its country risk premium (unless the user typed their own).
+  useEffect(() => {
+    if (edited.has("crp")) return;
+    const c = countryOptions.find(o => o.key === country);
+    if (c) setInputs(p => ({ ...p, crp: c.crp }));
+    // Built-in data also carries a local risk-free rate; live data is in USD terms (US Treasury + CRP).
+    if (!liveCountries && !edited.has("rfr") && COUNTRY_DATA[country]) setInputs(p => ({ ...p, rfr: COUNTRY_DATA[country].rfr }));
+  }, [country, liveCountries]);
+
+  const provenance: Record<InputKey, Sourced<unknown> | undefined> = {
+    rfr: live?.riskFree,
+    erp: live?.erp,
+    crp: live?.countries,
+    beta: live?.betas,
+  };
 
   const waccRes = useMemo(() => {
-    const s = DAMO_BETAS[sector];
-    const c = COUNTRY_DATA[country];
-    
-    // Auto-update rfr/crp based on country
-    const finalRFR = c.rfr || 4.25;
-    const finalCRP = c.crp || 0;
-    
-    const unlevBeta = s.beta;
+    const finalRFR = inputs.rfr;
+    const finalCRP = inputs.crp;
+
+    const unlevBeta = beta;
     const dlev = inputs.dlev / 100;
     const de = dlev / (1 - dlev);
     const tax = inputs.tax / 100;
@@ -40,7 +93,7 @@ export function WaccPanel() {
     const wacc = (costEquity * (1 - dlev)) + (atCOD * dlev);
     
     return { wacc, costEquity, atCOD, levBeta, unlevBeta, totalERP, eLev: 1-dlev, dLev: dlev };
-  }, [sector, country, inputs]);
+  }, [beta, inputs]);
 
   const handleApply = () => {
     updateSection("wacc", +waccRes.wacc.toFixed(2));
@@ -53,7 +106,7 @@ export function WaccPanel() {
       <header className="flex justify-between items-end mb-2">
         <div>
           <h2 className="text-3xl font-light text-text-primary">WACC <span className="font-bold">Calibration</span></h2>
-          <p className="text-text-muted text-sm italic">Damodaran Model · Jan 2024 NYU Stern Metrics</p>
+          <p className="text-text-muted text-sm italic">CAPM build-up · {live?.betas || live?.erp ? "live U.S. Treasury and Damodaran (NYU Stern) data" : "built-in defaults"}</p>
         </div>
       </header>
 
@@ -73,8 +126,8 @@ export function WaccPanel() {
                   onChange={e => setSector(e.target.value)}
                   className="w-full bg-bg border border-border-alt rounded-md px-3 py-2 font-mono text-[11px] text-text-primary outline-none focus:border-zinc-500"
                 >
-                  {Object.entries(DAMO_BETAS).map(([key, val]) => (
-                    <option key={key} value={key}>{val.label}</option>
+                  {sectorOptions.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
@@ -85,8 +138,8 @@ export function WaccPanel() {
                    onChange={e => setCountry(e.target.value)}
                    className="w-full bg-bg border border-border-alt rounded-md px-3 py-2 font-mono text-[11px] text-text-primary outline-none focus:border-zinc-500"
                 >
-                  {Object.entries(COUNTRY_DATA).map(([key, val]) => (
-                    <option key={key} value={key}>{val.label}</option>
+                  {countryOptions.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
@@ -95,27 +148,29 @@ export function WaccPanel() {
 
           <Card title="Step 02: Capital Structure">
              <div className="grid grid-cols-2 gap-4">
-                <Input label="D / (D+E) %" value={inputs.dlev} onChange={v => setInputs(p => ({...p, dlev:v}))} />
-                <Input label="Pre-tax CoD %" value={inputs.cod} onChange={v => setInputs(p => ({...p, cod:v}))} />
+                <Input label="D / (D+E) %" value={inputs.dlev} onChange={v => edit("dlev", v)} />
+                <Input label="Pre-tax CoD %" value={inputs.cod} onChange={v => edit("cod", v)} />
              </div>
              <div className="h-px bg-border-alt my-4 opacity-50" />
              <div className="grid grid-cols-2 gap-4">
-                <Input label="Size Premium %" value={inputs.size} onChange={v => setInputs(p => ({...p, size:v}))} />
-                <Input label="Risk Alpha %" value={inputs.specific} onChange={v => setInputs(p => ({...p, specific:v}))} />
+                <Input label="Size Premium %" value={inputs.size} onChange={v => edit("size", v)} />
+                <Input label="Risk Alpha %" value={inputs.specific} onChange={v => edit("specific", v)} />
              </div>
           </Card>
         </div>
 
         <div className="space-y-6">
+          <SourcesCard provenance={provenance} edited={edited} error={liveError} values={{ rfr: inputs.rfr, erp: inputs.erp, crp: inputs.crp, beta }} />
+
           <Card title="Step 03: Risk Primitives">
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Risk-Free Rate %" value={inputs.rfr} onChange={v => setInputs(p => ({...p, rfr:v}))} />
-              <Input label="Equity Risk Premium %" value={inputs.erp} onChange={v => setInputs(p => ({...p, erp:v}))} />
+              <Input label="Risk-Free Rate %" value={inputs.rfr} onChange={v => edit("rfr", v)} />
+              <Input label="Equity Risk Premium %" value={inputs.erp} onChange={v => edit("erp", v)} />
             </div>
             <div className="h-px bg-border-alt my-4 opacity-50" />
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Country Risk %" value={inputs.crp} onChange={v => setInputs(p => ({...p, crp:v}))} />
-              <Input label="Marginal Tax %" value={inputs.tax} onChange={v => setInputs(p => ({...p, tax:v}))} />
+              <Input label="Country Risk %" value={inputs.crp} onChange={v => edit("crp", v)} />
+              <Input label="Marginal Tax %" value={inputs.tax} onChange={v => edit("tax", v)} />
             </div>
           </Card>
 
@@ -142,6 +197,47 @@ export function WaccPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+const LABELS: Record<InputKey, string> = {
+  rfr: "Risk-free rate (10-year US Treasury)",
+  erp: "Equity risk premium (mature market)",
+  crp: "Country risk premium",
+  beta: "Unlevered industry beta",
+};
+
+/** Where each cost-of-capital input comes from, with its date and a link to the source. */
+function SourcesCard({ provenance, edited, error, values }: {
+  provenance: Record<InputKey, Sourced<unknown> | undefined>;
+  edited: Set<InputKey>;
+  error: string | null;
+  values: Record<InputKey, number>;
+}) {
+  return (
+    <Card title="Input sources">
+      <ul className="space-y-2 text-[11px]">
+        {(Object.keys(LABELS) as InputKey[]).map(k => {
+          const p = provenance[k];
+          return (
+            <li key={k} className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span className="text-text-secondary">{LABELS[k]}: <span className="font-mono text-text-primary">{k === "beta" ? values[k].toFixed(2) : `${values[k].toFixed(2)}%`}</span></span>
+              <span className={cn("text-[10px]", edited.has(k) ? "text-accent-orange" : p ? "text-accent-green" : "text-text-muted")}>
+                {edited.has(k) ? "Edited by you" : p ? (
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
+                    {p.source} · {p.asOf} <ExternalLink size={9} />
+                  </a>
+                ) : BUILT_IN}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {provenance.crp && !edited.has("rfr") && (
+        <p className="mt-3 text-[10px] text-text-muted">Live inputs are in US dollar terms: US Treasury rate plus the country's risk premium (Damodaran's method). For a local-currency WACC, enter the local government bond yield.</p>
+      )}
+      {error && <p className="mt-3 text-[10px] text-accent-orange">{error}</p>}
+    </Card>
   );
 }
 
