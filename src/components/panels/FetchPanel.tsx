@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useDeal } from "../../context/DealContext";
-import { fetchCompanyData, fetchCompanyEstimate } from "../../services/dataService";
+import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../services/dataService";
 import { CompanyData } from "../../types";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
@@ -14,6 +14,9 @@ export function FetchPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [offerEstimate, setOfferEstimate] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
+  // Tickers whose filings loaded but no live price source answered, and the prices the user typed.
+  const [needPrice, setNeedPrice] = useState<string[]>([]);
+  const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch(apiUrl("/api/health"))
@@ -22,7 +25,13 @@ export function FetchPanel() {
   }, []);
 
   const handleFetchBoth = async (useEstimate = false) => {
-    const fetcher: (t: string) => Promise<CompanyData> = useEstimate ? fetchCompanyEstimate : fetchCompanyData;
+    const priceFor = (t: string) => {
+      const v = Number(manualPrices[t.trim().toUpperCase()]);
+      return v > 0 ? v : undefined;
+    };
+    const fetcher: (t: string) => Promise<CompanyData> = useEstimate
+      ? fetchCompanyEstimate
+      : t => fetchCompanyData(t, priceFor(t));
     if (!tkT || !tkA) {
       alert("Please enter both target and acquirer tickers.");
       return;
@@ -30,12 +39,19 @@ export function FetchPanel() {
     
     setLoading(true);
     setOfferEstimate(false);
-    setStatus(`Fetching ${tkT}...`);
+    setStatus(`Fetching ${tkT} and ${tkA}...`);
     
     try {
-      const target = await fetcher(tkT);
-      setStatus(`Fetching ${tkA}...`);
-      const acquirer = await fetcher(tkA);
+      const results = await Promise.allSettled([fetcher(tkT), fetcher(tkA)]);
+      const missing = results.flatMap(r => (r.status === "rejected" && r.reason instanceof NeedsPriceError ? [r.reason.ticker] : []));
+      setNeedPrice(missing);
+      if (missing.length) {
+        setStatus(`Financials loaded from SEC filings, but no live price for ${missing.join(" and ")}. Enter the current share price below.`);
+        return;
+      }
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) throw failed.reason;
+      const [target, acquirer] = results.map(r => (r as PromiseFulfilledResult<CompanyData>).value);
       
       const rg = target.revenueGrowthYoY || 10;
       
@@ -137,9 +153,39 @@ export function FetchPanel() {
         </div>
         
         <div className="mt-2 font-mono text-[9px] text-text-muted uppercase tracking-tight flex items-center justify-between">
-          <span>Financials: SEC EDGAR filings (US) or Yahoo Finance · Prices: Yahoo Finance / Stooq (may be delayed)</span>
+          <span>Financials: SEC EDGAR filings (US) or Yahoo Finance · Prices: Finnhub / Yahoo / CNBC / Stooq (may be delayed)</span>
           {status && <span className={cn(status.startsWith("Error") ? "text-accent-red" : "text-accent-orange", "font-bold normal-case")}>{status}</span>}
         </div>
+        {needPrice.length > 0 && (
+          <div className="flex flex-col gap-3 bg-accent-blue/10 border border-accent-blue/20 rounded p-3 text-[11px] text-text-primary">
+            <span>
+              Reported financials loaded from SEC filings, but no live price source answered from the server.
+              Enter today's share price (from your broker or exchange) to continue. It will be labelled "entered by user".
+            </span>
+            <div className="flex flex-wrap items-end gap-3">
+              {needPrice.map(t => (
+                <label key={t} className="flex flex-col gap-1 font-mono text-[10px] uppercase text-text-muted">
+                  {t} share price ($)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={manualPrices[t] ?? ""}
+                    onChange={e => setManualPrices(p => ({ ...p, [t]: e.target.value }))}
+                    className="w-32 bg-bg border border-border-alt rounded-md px-2 py-1.5 font-mono text-[13px] text-text-primary outline-none focus:border-zinc-500"
+                  />
+                </label>
+              ))}
+              <button
+                onClick={() => handleFetchBoth()}
+                disabled={loading || needPrice.some(t => !(Number(manualPrices[t]) > 0))}
+                className="px-3 py-1.5 bg-accent-blue text-white rounded font-bold uppercase tracking-wider text-[10px] disabled:opacity-50"
+              >
+                Continue with these prices
+              </button>
+            </div>
+          </div>
+        )}
         {offerEstimate && (
           <div className="flex items-center justify-between gap-4 bg-accent-orange/10 border border-accent-orange/20 rounded p-3 text-[11px] text-accent-orange">
             <span>Live data unavailable. You can load AI-estimated figures instead, but they are not verified and may be wrong.</span>

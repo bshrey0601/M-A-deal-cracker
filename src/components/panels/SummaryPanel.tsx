@@ -154,7 +154,7 @@ export function SummaryPanel() {
         return;
       }
 
-      const thesisContent = data.choices?.[0]?.message?.content || "Failed to engage Mandate Engine.";
+      const thesisContent = data.content || data.choices?.[0]?.message?.content || "Failed to engage Mandate Engine.";
       setThesisHtml(thesisContent);
       updateSection("thesisGenerated", true as any);
     } catch (err) {

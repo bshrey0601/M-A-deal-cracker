@@ -1,17 +1,33 @@
 import { CompanyData } from "../types";
 import { apiUrl, readApiError, BACKEND_MISSING } from "../lib/api";
 
-/** Live quote and reported fundamentals from Yahoo Finance via the server. */
-export async function fetchCompanyData(ticker: string): Promise<CompanyData> {
+/** Thrown when filings loaded but no live price source answered; the user can type the price in. */
+export class NeedsPriceError extends Error {
+  constructor(public ticker: string, message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Reported financials (SEC filings for US companies) plus a live price, via the server.
+ * `manualPrice` is a share price the user entered when no live price source was reachable.
+ */
+export async function fetchCompanyData(ticker: string, manualPrice?: number): Promise<CompanyData> {
   const sym = ticker.trim().toUpperCase();
+  const query = manualPrice ? `?price=${encodeURIComponent(String(manualPrice))}` : "";
   let response: Response;
   try {
-    response = await fetch(apiUrl(`/api/market/${encodeURIComponent(sym)}`));
+    response = await fetch(apiUrl(`/api/market/${encodeURIComponent(sym)}${query}`));
   } catch {
     throw new Error(BACKEND_MISSING);
   }
   if (!response.ok) {
-    throw new Error(await readApiError(response, `Cannot fetch "${sym}" (HTTP ${response.status}).`));
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const body = isJson ? await response.json().catch(() => null) : null;
+    if (!isJson) throw new Error(BACKEND_MISSING);
+    const message = body?.error || `Cannot fetch "${sym}" (HTTP ${response.status}).`;
+    if (body?.needsPrice) throw new NeedsPriceError(sym, message);
+    throw new Error(message);
   }
   return response.json();
 }
@@ -68,14 +84,14 @@ export async function fetchCompanyEstimate(ticker: string): Promise<CompanyData>
       exchange: result.exchange || 'NASDAQ',
       description: result.description || `${sym} · ${result.sector}`,
       source: {
-        provider: "AI estimate (Groq, llama-3.1-8b)",
+        provider: `AI estimate (${result.aiProvider || "AI"})`,
         verified: false,
         asOf: new Date().toISOString(),
         warnings: ["Figures are an AI estimate, not reported data. Verify against filings before relying on them."],
       },
     };
   } catch (e: any) {
-    console.error(`Groq estimate error for ${sym}:`, e);
+    console.error(`AI estimate error for ${sym}:`, e);
     throw new Error(`AI estimate for "${sym}" failed: ${e.message}`);
   }
 }

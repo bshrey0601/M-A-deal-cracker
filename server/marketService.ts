@@ -15,7 +15,13 @@ import { Quote, parseYahooChart, parseStooqCsv, parseFinnhubQuote, parseCnbcQuot
 
 export class MarketDataError extends Error {
   /** noFallback: the failure would repeat on every other source (e.g. no price anywhere). */
-  constructor(public status: number, message: string, public noFallback = false) {
+  constructor(
+    public status: number,
+    message: string,
+    public noFallback = false,
+    /** Financials loaded but no live price: the user can enter the share price to continue. */
+    public needsPrice = false,
+  ) {
     super(message);
   }
 }
@@ -60,7 +66,15 @@ async function request(url: string, headers: Record<string, string>, retry = tru
 
 async function getJson(url: string, headers: Record<string, string>) {
   const res = await request(url, { Accept: "application/json", ...headers });
-  if (!res.ok) throw new MarketDataError(res.status, `${new URL(url).host} returned HTTP ${res.status}`);
+  if (!res.ok) {
+    const host = new URL(url).host;
+    // The SEC refuses clients that don't identify themselves with a contact email.
+    const hint =
+      res.status === 403 && host.endsWith("sec.gov") && !process.env.SEC_USER_AGENT?.trim()
+        ? ' (set SEC_USER_AGENT to "Your Name your@email.com" on the server)'
+        : "";
+    throw new MarketDataError(res.status, `${host} returned HTTP ${res.status}${hint}`);
+  }
   return res.json();
 }
 
@@ -165,7 +179,12 @@ const submissions = (cik: number) =>
     getJson(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, secHeaders()),
   );
 
-async function secCompany(ticker: string): Promise<CompanyData | null> {
+/** A share price the user typed in (e.g. from their broker) when no live price source answers. */
+export function manualQuote(price: number): Quote {
+  return { provider: "entered by user", price, currency: "USD", time: new Date() };
+}
+
+async function secCompany(ticker: string, manualPrice?: number): Promise<CompanyData | null> {
   if (!isUsTicker(ticker)) return null;
   const map = await secTickerMap();
   const cik = map.get(ticker) ?? map.get(ticker.replace("-", "."));
@@ -173,11 +192,17 @@ async function secCompany(ticker: string): Promise<CompanyData | null> {
   const [facts, subs, quote] = await Promise.all([
     companyFacts(cik),
     submissions(cik).catch(() => undefined),
-    getQuote(ticker).catch((e: Error) => e),
+    manualPrice ? manualQuote(manualPrice) : getQuote(ticker).catch((e: Error) => e),
   ]);
   if (quote instanceof Error) {
     // Financials are fine; only the price is missing, and Yahoo's other endpoints would fail the same way.
-    throw new MarketDataError(502, `Financials loaded from SEC filings, but no price source answered: ${quote.message.replace(/^No price available for "[^"]+" /, "")}`, true);
+    // The UI asks the user for the current share price and retries with it.
+    throw new MarketDataError(
+      502,
+      `Financials for ${ticker} loaded from SEC filings, but no live price source answered. Enter the current share price to continue. ${quote.message.replace(/^No price available for "[^"]+" /, "")}`,
+      true,
+      true,
+    );
   }
   return mapSecToCompany(ticker, facts, subs, quote);
 }
@@ -224,12 +249,12 @@ async function yahooCompany(ticker: string): Promise<CompanyData> {
 }
 
 // ---------- entry point ----------
-export function getCompany(ticker: string): Promise<CompanyData> {
-  return memo(`company:${ticker}`, 5 * 60_000, async () => {
+export function getCompany(ticker: string, manualPrice?: number): Promise<CompanyData> {
+  return memo(`company:${ticker}:${manualPrice ?? "live"}`, 5 * 60_000, async () => {
     const errors: string[] = [];
     let notFound = 0;
     try {
-      const sec = await secCompany(ticker);
+      const sec = await secCompany(ticker, manualPrice);
       if (sec) return sec;
       notFound++;
     } catch (e: any) {

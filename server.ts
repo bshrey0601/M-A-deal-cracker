@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import { getCompany, diagnostics, MarketDataError } from "./server/marketService";
+import { complete, llmLabel, LlmError, NO_AI_KEY, parseJsonReply } from "./server/llm";
 
 dotenv.config();
 
@@ -18,7 +19,6 @@ const isProduction = process.env.NODE_ENV === "production" || process.argv.inclu
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
-  const groqKey = () => process.env.GROQ_API_KEY?.trim();
 
   app.use(express.json({ limit: "100kb" }));
 
@@ -46,25 +46,37 @@ async function startServer() {
       status: "ok",
       commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null,
       marketData: "sec-edgar+yahoo",
-      aiConfigured: Boolean(groqKey()),
+      aiConfigured: Boolean(llmLabel()),
+      aiProvider: llmLabel(),
     });
   });
 
   // Which data providers this deployment can reach right now (no secrets in the output).
   app.get("/api/diagnostics", async (_req, res) => {
-    res.json(await diagnostics());
+    res.json({ ...(await diagnostics()), aiProvider: llmLabel() });
   });
 
   // Live price + reported financials (SEC EDGAR / Yahoo Finance, see server/marketService.ts).
   app.get("/api/market/:ticker", async (req, res) => {
     const ticker = cleanTicker(req.params.ticker);
     if (!ticker) return res.status(400).json({ error: "Invalid ticker symbol." });
+    // Optional ?price=: a share price the user entered when no live price source answers.
+    let manualPrice: number | undefined;
+    if (req.query.price !== undefined) {
+      manualPrice = Number(req.query.price);
+      if (!Number.isFinite(manualPrice) || manualPrice <= 0 || manualPrice > 1e7) {
+        return res.status(400).json({ error: "Share price must be a positive number." });
+      }
+    }
     try {
-      res.json(await getCompany(ticker));
+      res.json(await getCompany(ticker, manualPrice));
     } catch (error: any) {
       const status = error instanceof MarketDataError ? error.status : 500;
       console.error(`Market data error for ${ticker}:`, error?.message ?? error);
-      res.status(status === 404 ? 404 : 502).json({ error: error?.message ?? "Market data unavailable." });
+      res.status(status === 404 ? 404 : 502).json({
+        error: error?.message ?? "Market data unavailable.",
+        needsPrice: error instanceof MarketDataError && error.needsPrice,
+      });
     }
   });
 
@@ -72,10 +84,7 @@ async function startServer() {
   app.post("/api/ai/extract", async (req, res) => {
     const ticker = cleanTicker(req.body?.ticker);
     if (!ticker) return res.status(400).json({ error: "Invalid ticker symbol." });
-    const key = groqKey();
-    if (!key) {
-      return res.status(500).json({ error: "GROQ_API_KEY not configured on server. Please add it to your environment." });
-    }
+    if (!llmLabel()) return res.status(503).json({ error: NO_AI_KEY });
 
     const prompt = `Act as a professional financial data provider. Extract current financial data for the stock ticker "${ticker}".
     I need the following EXACT JSON structure:
@@ -108,66 +117,38 @@ async function startServer() {
     Return ONLY the raw JSON object. No markdown, no commentary.`;
 
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          messages: [
-            { role: "system", content: "You are a specialized financial data extraction bot. Output strictly valid JSON." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0,
-          response_format: { type: "json_object" },
-        }),
+      const { text, provider } = await complete({
+        system: "You are a specialized financial data extraction bot. Output strictly valid JSON.",
+        prompt,
+        json: true,
+        maxTokens: 4000,
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        return res.status(response.status).json({ error: data.error?.message || "AI provider error" });
-      }
-      res.json(JSON.parse(data.choices?.[0]?.message?.content));
-    } catch (error) {
-      console.error("Extraction Error:", error);
-      res.status(500).json({ error: "Failed to extract data via Groq." });
+      res.json({ ...parseJsonReply(text), aiProvider: provider });
+    } catch (error: any) {
+      console.error("Extraction Error:", error?.message ?? error);
+      res.status(error instanceof LlmError ? error.status : 500).json({ error: error?.message ?? "AI estimate failed." });
     }
   });
 
   // AI investment thesis (narrative only; all figures come from the client's model).
   app.post("/api/ai/thesis", async (req, res) => {
     const { prompt } = req.body ?? {};
-    const key = groqKey();
     if (typeof prompt !== "string" || !prompt) return res.status(400).json({ error: "Missing prompt." });
-    if (!key) {
-      return res.status(500).json({ error: "GROQ_API_KEY not configured on server." });
-    }
+    if (prompt.length > 20_000) return res.status(400).json({ error: "Prompt too long." });
+    if (!llmLabel()) return res.status(503).json({ error: NO_AI_KEY });
 
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          messages: [
-            { role: "system", content: "You are a Managing Director at Goldman Sachs M&A. Write professional investment banking-grade M&A theses." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.7,
-        }),
+      const { text, provider } = await complete({
+        system:
+          "You are a Managing Director in an M&A advisory group. Write professional, investment-banking-grade M&A theses. " +
+          "Use only the figures given in the prompt; never invent financial numbers.",
+        prompt,
       });
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType?.includes("application/json")) {
-        return res.status(response.status).json({ error: "AI Provider returned non-JSON response.", details: await response.text() });
-      }
-      const data = await response.json();
-      if (!response.ok) {
-        return res.status(response.status).json({ error: data.error?.message || data.error?.type || "AI Engine Error" });
-      }
-      res.json(data);
-    } catch (error) {
-      console.error("AI Thesis Proxy Error:", error);
-      res.status(500).json({ error: "Failed to communicate with Groq engine." });
+      // `choices` keeps the response shape older UI builds read.
+      res.json({ content: text, provider, choices: [{ message: { content: text } }] });
+    } catch (error: any) {
+      console.error("AI Thesis Error:", error?.message ?? error);
+      res.status(error instanceof LlmError ? error.status : 500).json({ error: error?.message ?? "AI thesis failed." });
     }
   });
 
@@ -189,7 +170,8 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT} (${isProduction ? "production" : "development"})`);
-    if (!groqKey()) console.log("GROQ_API_KEY not set: market data works; AI thesis is disabled.");
+    const ai = llmLabel();
+    console.log(ai ? `AI writing: ${ai}` : "No AI key set (ANTHROPIC_API_KEY / GEMINI_API_KEY / GROQ_API_KEY): market data works; AI thesis is disabled.");
   });
 }
 

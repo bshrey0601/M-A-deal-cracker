@@ -58,8 +58,16 @@ test("financials found but no price anywhere: says so, and doesn't retry Yahoo's
   const { getCompany, MarketDataError } = await import("./marketService");
   const before = calls.filter(u => /yahoo/.test(u)).length;
   await assert.rejects(getCompany("NOPX"), (e: any) =>
-    e instanceof MarketDataError && /Financials loaded from SEC filings, but no price source answered/.test(e.message) && /Finnhub not configured/.test(e.message));
+    e instanceof MarketDataError && e.needsPrice && /loaded from SEC filings, but no live price source answered/.test(e.message) && /Finnhub not configured/.test(e.message));
   assert.equal(calls.filter(u => /yahoo/.test(u)).length, before, "Yahoo skipped while cooling down");
+});
+
+test("financials found, no live price: a user-entered price completes the company", async () => {
+  const { getCompany } = await import("./marketService");
+  const c = await getCompany("NOPX", 25);
+  assert.equal(c.currentPrice, 25);
+  assert.match(c.source!.provider, /SEC EDGAR.*entered by user/);
+  assert.ok(c.marketCap > 0);
 });
 
 test("diagnostics reports each source without secrets", async () => {
