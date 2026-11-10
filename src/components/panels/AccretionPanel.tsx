@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from "react";
+import { AccretionMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
 import { computeAccretion } from "../../lib/accretion";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
@@ -208,6 +209,8 @@ export function AccretionPanel() {
           </div>
         </div>
       </div>
+
+      <AccretionMonteCarlo />
     </div>
   );
 }
