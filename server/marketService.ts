@@ -3,6 +3,7 @@ import { CompanyData } from "../src/types";
 import { mapYahooToCompany } from "../src/lib/marketData";
 import { mapSecToCompany, SecCompanyFacts, SecSubmissions } from "../src/lib/secFacts";
 import { secondSourceCheck } from "../src/lib/accuracyChecks";
+import { runDueDiligence } from "../src/lib/dueDiligence";
 import { Quote, parseYahooChart, parseStooqCsv, parseFinnhubQuote, parseCnbcQuote, stooqSymbol } from "../src/lib/quote";
 
 /**
@@ -211,6 +212,7 @@ async function secCompany(ticker: string, manualPrice?: number): Promise<Company
     );
   }
   const company = mapSecToCompany(ticker, facts, subs, quote);
+  company.dueDiligence = runDueDiligence(facts, subs, company);
   // Accuracy check against an independent provider. Best effort: never blocks the result.
   company.checks?.push(secondSourceCheck(company.revenue, await yahooRevenue(ticker)));
   return company;

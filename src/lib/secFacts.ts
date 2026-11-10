@@ -39,8 +39,19 @@ export interface SecSubmissions {
   name?: string;
   sicDescription?: string;
   exchanges?: string[];
+  /** SIC industry code (e.g. "3571"). */
+  sic?: string;
   /** Recent filings as parallel arrays (data.sec.gov/submissions format). */
-  filings?: { recent?: { accessionNumber?: string[]; primaryDocument?: string[] } };
+  filings?: {
+    recent?: {
+      accessionNumber?: string[];
+      primaryDocument?: string[];
+      form?: string[];
+      filingDate?: string[];
+      /** 8-K item numbers, e.g. "2.02,9.01". */
+      items?: string[];
+    };
+  };
 }
 
 const DAY = 86_400_000;
@@ -53,7 +64,7 @@ const newest = (a: SecFact, b: SecFact) =>
   t(b.end) - t(a.end) || (b.filed ?? "").localeCompare(a.filed ?? "");
 
 /** First tag (in priority order) that has data in the given unit. */
-function series(facts: SecCompanyFacts, tags: string[], unit = "USD", taxonomy = "us-gaap"): SecFact[] {
+export function series(facts: SecCompanyFacts, tags: string[], unit = "USD", taxonomy = "us-gaap"): SecFact[] {
   for (const tag of tags) {
     const rows = facts.facts?.[taxonomy]?.[tag]?.units?.[unit];
     const usable = rows?.filter(r => typeof r.val === "number" && r.end && (!r.form || FORMS.has(r.form)));
@@ -208,7 +219,7 @@ export function filingUrl(cik: number | undefined, accn: string | undefined, doc
   return doc ? `${base}/${doc}` : `${base}/${accn}-index.htm`;
 }
 
-function primaryDocs(submissions: SecSubmissions | undefined): Map<string, string> {
+export function primaryDocs(submissions: SecSubmissions | undefined): Map<string, string> {
   const recent = submissions?.filings?.recent;
   const map = new Map<string, string>();
   recent?.accessionNumber?.forEach((a, i) => {
