@@ -4,6 +4,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { getCompany, diagnostics, MarketDataError } from "./server/marketService";
 import { getMarketInputs } from "./server/marketInputs";
+import { getPeers } from "./server/peers";
 import { complete, llmLabel, LlmError, NO_AI_KEY, parseJsonReply } from "./server/llm";
 
 dotenv.config();
@@ -83,6 +84,24 @@ async function startServer() {
         error: error?.message ?? "Market data unavailable.",
         needsPrice: error instanceof MarketDataError && error.needsPrice,
       });
+    }
+  });
+
+  // Trading comparables picked by SIC code and size from SEC data (server/peers.ts).
+  app.get("/api/peers/:ticker", async (req, res) => {
+    const ticker = cleanTicker(req.params.ticker);
+    if (!ticker) return res.status(400).json({ error: "Invalid ticker symbol." });
+    const exclude = String(req.query.exclude ?? "")
+      .split(",")
+      .map(cleanTicker)
+      .filter((t): t is string => !!t)
+      .slice(0, 20);
+    try {
+      res.json(await getPeers(ticker, exclude));
+    } catch (error: any) {
+      const status = error instanceof MarketDataError ? error.status : 500;
+      console.error(`Peers error for ${ticker}:`, error?.message ?? error);
+      res.status(status === 404 ? 404 : 502).json({ error: error?.message ?? "Peers unavailable." });
     }
   });
 

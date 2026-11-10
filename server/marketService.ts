@@ -39,7 +39,7 @@ const secUserAgent = () => process.env.SEC_USER_AGENT?.trim() || DEFAULT_SEC_USE
 
 // ---------- small TTL cache with in-flight de-duplication ----------
 const cache = new Map<string, { exp: number; value: Promise<any> }>();
-function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+export function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return hit.value;
   const value = fn();
@@ -52,7 +52,7 @@ function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** fetch with a timeout and (unless retry is false) one polite retry on 429 / 5xx. */
-async function request(url: string, headers: Record<string, string>, retry = true, timeoutMs = 10_000): Promise<Response> {
+export async function request(url: string, headers: Record<string, string>, retry = true, timeoutMs = 10_000): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -69,7 +69,7 @@ async function request(url: string, headers: Record<string, string>, retry = tru
   }
 }
 
-async function getJson(url: string, headers: Record<string, string>, timeoutMs?: number) {
+export async function getJson(url: string, headers: Record<string, string>, timeoutMs?: number) {
   const res = await request(url, { Accept: "application/json", ...headers }, true, timeoutMs);
   if (!res.ok) {
     const host = new URL(url).host;
@@ -164,9 +164,9 @@ export function getQuote(symbol: string): Promise<Quote> {
 }
 
 // ---------- SEC EDGAR ----------
-const secHeaders = () => ({ "User-Agent": secUserAgent(), Accept: "application/json" });
+export const secHeaders = () => ({ "User-Agent": secUserAgent(), Accept: "application/json" });
 
-const secTickerMap = () =>
+export const secTickerMap = () =>
   memo("sec:tickers", 24 * 3600_000, async () => {
     const json = await getJson("https://www.sec.gov/files/company_tickers.json", secHeaders(), SEC_TIMEOUT);
     const map = new Map<string, number>();
@@ -175,13 +175,13 @@ const secTickerMap = () =>
   });
 
 // Company facts for large filers are several MB; give the SEC more time than a price quote.
-const SEC_TIMEOUT = 30_000;
+export const SEC_TIMEOUT = 30_000;
 const pad = (cik: number) => String(cik).padStart(10, "0");
 const companyFacts = (cik: number) =>
   memo<SecCompanyFacts>(`sec:facts:${cik}`, 6 * 3600_000, () =>
     getJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`, secHeaders(), SEC_TIMEOUT),
   );
-const submissions = (cik: number) =>
+export const submissions = (cik: number) =>
   memo<SecSubmissions>(`sec:subs:${cik}`, 24 * 3600_000, () =>
     getJson(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, secHeaders(), SEC_TIMEOUT),
   );

@@ -128,6 +128,51 @@ export interface PrecedentDeal {
   type: string;
 }
 
+/** A listed comparable company for trading comps, picked by SIC code and size (or added by the user). */
+export interface Peer {
+  ticker: string;
+  name: string;
+  /** SIC industry code from the company's SEC filings. */
+  sic?: string;
+  currency: string;
+  price: number;
+  /** Millions. */
+  marketCap: number;
+  netDebt: number;
+  revenue: number;
+  ebitda: number;
+  netIncome: number;
+  evRevenue: number;
+  evEbitda: number;
+  pe: number;
+  /** Period of the financials, e.g. "LTM 2026-09-27". */
+  period: string;
+  /** Data provider, e.g. "SEC EDGAR + Nasdaq". */
+  source: string;
+  /** Latest filing behind the revenue figure, when known. */
+  filingUrl?: string;
+  /** Why it was picked, e.g. "Same SIC 3571; revenue closest to the target's". */
+  why: string;
+  /** Counted in the comps statistics. */
+  included: boolean;
+}
+
+/** How the auto-picked peers were found (GET /api/peers/:ticker). */
+export interface PeerSearchInfo {
+  ticker: string;
+  sic: string;
+  sicDescription?: string;
+  /** Listed companies with revenue that matched the SIC search, before picking the closest. */
+  candidates: number;
+  /** True when the exact SIC code had too few companies and related codes in its industry group were added. */
+  widened: boolean;
+  /** Calendar year of the revenue used to rank by size. */
+  revenueYear: number;
+  /** Companies that were picked but whose data could not be loaded. */
+  skipped: string[];
+  sources: { label: string; url: string }[];
+}
+
 export interface DealState {
   target: CompanyData | null;
   acquirer: CompanyData | null;
@@ -177,4 +222,7 @@ export interface DealState {
     leg: number;
   };
   selectedPrecedents: number[];
+  /** Trading comparables for the target (Market Cross-Check). */
+  peers: Peer[];
+  peerInfo?: PeerSearchInfo;
 }
