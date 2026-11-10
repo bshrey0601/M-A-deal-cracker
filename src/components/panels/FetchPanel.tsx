@@ -303,7 +303,7 @@ function SourceBadge({ company }: { company: CompanyData }) {
   return (
     <div className={cn(
       "mb-6 rounded border p-2 text-[10px] font-mono",
-      src.verified ? "border-accent-green/20 bg-accent-green/5 text-accent-green" : "border-accent-orange/30 bg-accent-orange/10 text-accent-orange"
+      src.verified && !src.secUnavailable ? "border-accent-green/20 bg-accent-green/5 text-accent-green" : "border-accent-orange/30 bg-accent-orange/10 text-accent-orange"
     )}>
       <div className="font-bold uppercase tracking-wider">
         {src.verified ? "✓" : "⚠"} {src.provider} · {src.verified ? `price as of ${when}` : "unverified AI estimate"}
