@@ -88,3 +88,19 @@
     }
   }
 }
+
+/* Fact-checked memo: numbers matched to the model vs numbers the model doesn't contain. */
+.fc-ok {
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent-green);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.fc-bad {
+  background: color-mix(in srgb, var(--color-accent-red) 22%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-accent-red) 60%, transparent);
+  border-radius: 2px;
+  padding: 0 2px;
+  cursor: help;
+}
