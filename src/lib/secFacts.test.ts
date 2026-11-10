@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ltm, mapSecToCompany } from "./secFacts";
-import { secFacts } from "./__fixtures__/secFacts";
+import { ACCN, secFacts, secSubmissions } from "./__fixtures__/secFacts";
 import { Quote } from "./quote";
 
 const close = (a: number, b: number, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -67,4 +67,68 @@ test("sums share classes reported on the same cover page", () => {
 
 test("refuses filers without US GAAP revenue (e.g. IFRS 20-F filers)", () => {
   assert.throws(() => mapSecToCompany("FPI", { facts: { "us-gaap": {} } }, undefined, quote), /no annual revenue/);
+});
+
+test("cites the exact SEC filings behind each reported figure", () => {
+  const c = mapSecToCompany("EXM", secFacts(), secSubmissions(), quote);
+  const cit = c.citations!;
+
+  // LTM revenue = FY2025 10-K + Q1 FY2026 10-Q - prior-year Q1 (as restated in the same 10-Q).
+  const rev = cit.revenue!;
+  assert.equal(rev.kind, "sec");
+  assert.deepEqual(rev.facts.map(f => [f.accn, f.sign, f.end]), [
+    [ACCN.k25, 1, "2025-06-30"],
+    [ACCN.q126, 1, "2025-09-30"],
+    [ACCN.q126, -1, "2024-09-30"],
+  ]);
+  assert.equal(rev.facts[0].concept, "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax");
+  assert.equal(rev.facts[0].url, "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/exm-20250630.htm");
+  assert.match(rev.method, /Last twelve months to 2025-09-30/);
+  // The cited facts reproduce the figure shown.
+  close(rev.facts.reduce((s, f) => s + f.sign * f.value, 0) / 1e6, c.revenue);
+
+  // Net debt: debt added, cash and short-term investments subtracted, and they add back up.
+  const nd = cit.netDebt!;
+  assert.deepEqual(nd.facts.map(f => [f.concept, f.sign]), [
+    ["us-gaap:LongTermDebtNoncurrent", 1],
+    ["us-gaap:LongTermDebtCurrent", 1],
+    ["us-gaap:CashAndCashEquivalentsAtCarryingValue", -1],
+    ["us-gaap:ShortTermInvestments", -1],
+  ]);
+  close(nd.facts.reduce((s, f) => s + f.sign * f.value, 0) / 1e6, c.netDebt);
+
+  // Shares come from the cover page (dei), price from the market feed, ratios are marked as calculated.
+  assert.equal(cit.sharesOutstanding!.facts[0].concept, "dei:EntityCommonStockSharesOutstanding");
+  assert.equal(cit.sharesOutstanding!.facts[0].unit, "shares");
+  assert.equal(cit.currentPrice!.kind, "market");
+  assert.match(cit.currentPrice!.method, /Stooq/);
+  assert.equal(cit.evEbitda!.kind, "derived");
+  assert.deepEqual(cit.ebitda!.inputs, ["ebit", "da"]);
+});
+
+test("every cited SEC figure adds back up to the number shown", () => {
+  const c = mapSecToCompany("EXM", secFacts(), secSubmissions(), quote);
+  for (const k of ["revenue", "ebit", "netIncome", "da"] as const) {
+    const sum = c.citations![k]!.facts.reduce((s, f) => s + f.sign * f.value, 0) / 1e6;
+    close(sum, c[k]);
+  }
+});
+
+test("links to the filing index when the main document is unknown, and labels a typed-in price", () => {
+  const c = mapSecToCompany("EXM", secFacts(), undefined, { ...quote, provider: "entered by user" });
+  assert.equal(
+    c.citations!.revenue!.facts[1].url,
+    "https://www.sec.gov/Archives/edgar/data/789019/000119312525256321/0001193125-25-256321-index.htm",
+  );
+  assert.equal(c.citations!.currentPrice!.kind, "user");
+});
+
+test("debt from an older filing is cited with that filing's date", () => {
+  const f = secFacts();
+  delete f.facts!["us-gaap"].LongTermDebtNoncurrent;
+  delete f.facts!["us-gaap"].LongTermDebtCurrent;
+  const c = mapSecToCompany("EXM", f, undefined, quote);
+  const debt = c.citations!.netDebt!.facts.filter(x => x.sign === 1);
+  assert.deepEqual(debt.map(x => [x.concept, x.end, x.form]), [["us-gaap:LongTermDebt", "2025-06-30", "10-K"]]);
+  close(c.citations!.netDebt!.facts.reduce((s, x) => s + x.sign * x.value, 0) / 1e6, c.netDebt);
 });

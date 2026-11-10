@@ -32,7 +32,46 @@ export interface CompanyData {
   verifiedDA?: boolean;
   verifiedCapex?: boolean;
   source?: DataSource;
+  /** Where each figure came from, so the UI can show the exact filing behind it. */
+  citations?: Citations;
 }
+
+/** One reported number as filed with the SEC (XBRL fact). */
+export interface FactCitation {
+  /** XBRL concept, e.g. "us-gaap:Revenues". */
+  concept: string;
+  /** Value exactly as filed, in `unit` (not scaled to millions). */
+  value: number;
+  unit: string;
+  /** Reporting period (start is absent for balance-sheet dates). */
+  start?: string;
+  end: string;
+  form?: string;
+  filed?: string;
+  /** SEC accession number of the filing. */
+  accn?: string;
+  /** Link to the filing on sec.gov. */
+  url?: string;
+  /** +1 when the fact is added, -1 when it is subtracted in the calculation. */
+  sign: 1 | -1;
+}
+
+export type CitedField =
+  | "currentPrice" | "sharesOutstanding" | "marketCap" | "revenue" | "ebitda" | "ebit" | "netIncome" | "eps"
+  | "da" | "capex" | "netDebt" | "bookValuePerShare" | "dividendPerShare" | "peRatio" | "evEbitda"
+  | "evRevenue" | "pbRatio" | "revenueGrowthYoY" | "ebitdaMargin" | "netMargin";
+
+export interface Citation {
+  /** sec = official filing; market = price feed; user = typed in; derived = calculated from other figures. */
+  kind: "sec" | "market" | "user" | "derived";
+  /** Plain-English description of how the figure was obtained. */
+  method: string;
+  facts: FactCitation[];
+  /** Other figures this one is calculated from. */
+  inputs?: CitedField[];
+}
+
+export type Citations = Partial<Record<CitedField, Citation>>;
 
 export interface DataSource {
   provider: string;
