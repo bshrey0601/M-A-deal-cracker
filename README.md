@@ -69,7 +69,7 @@ npm start
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` | Optional (set one) | Enables the AI investment thesis and the "Use AI estimate" fallback. Used in that order: Claude ([console.anthropic.com](https://console.anthropic.com)), Gemini ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), Groq ([console.groq.com/keys](https://console.groq.com/keys)). `ANTHROPIC_MODEL`, `GEMINI_MODEL` and `GROQ_MODEL` override the default models. AI only writes analysis; it is never the source of the financial figures. Without a key, everything except those two features works. |
 | `PORT` | Optional | Port to listen on (default `3000`). |
-| `SEC_USER_AGENT` | Recommended | Your name and contact email (e.g. `Jane Doe jane@example.com`). The SEC asks automated clients to identify themselves and may block requests that don't. |
+| `SEC_USER_AGENT` | Recommended for your own deployment | Your name and contact email (e.g. `Jane Doe jane@example.com`). The SEC rejects automated clients that don't give a contact email. If unset, the app's owner's contact is used (see `DEFAULT_SEC_USER_AGENT` in `server/marketService.ts`). |
 | `FINNHUB_API_KEY` | Recommended on cloud hosts | Most reliable price source for US stocks; used first when set. Free key at [finnhub.io/register](https://finnhub.io/register). |
 | `CORS_ORIGINS` | Optional | Server only. Origins allowed to call the API from another site; defaults to `https://*.github.io`. |
 | `VITE_API_BASE_URL` | Optional | Build time only. Server URL for a separately hosted interface (set by the Pages workflow). |

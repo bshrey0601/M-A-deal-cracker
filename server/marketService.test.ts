@@ -4,13 +4,15 @@ import { secFacts } from "../src/lib/__fixtures__/secFacts";
 
 // Simulates production on a cloud host: every Yahoo endpoint answers 429, SEC and Stooq work.
 const calls: string[] = [];
+const secUserAgents: string[] = [];
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 before(() => {
-  globalThis.fetch = (async (input: any) => {
+  globalThis.fetch = (async (input: any, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
+    if (/sec\.gov/.test(url)) secUserAgents.push(new Headers(init?.headers).get("user-agent") ?? "");
     if (/yahoo\.com/.test(url)) return new Response("Too Many Requests", { status: 429 });
     if (url.endsWith("/files/company_tickers.json")) {
       return json({
@@ -40,6 +42,8 @@ test("US company: SEC financials + Stooq price when Yahoo is rate-limiting", asy
   assert.match(c.source!.provider, /SEC EDGAR.*Stooq/);
   assert.equal(Math.round(c.revenue), 291_400);
   assert.ok(calls.some(u => u.includes("data.sec.gov")), "SEC was queried");
+  // Without SEC_USER_AGENT the SEC still gets a contact email (it answers 403 otherwise).
+  assert.ok(secUserAgents.length && secUserAgents.every(ua => /\S+@\S+\.\S+/.test(ua)), secUserAgents.join(" | "));
   // Accuracy checks run; the second-source comparison is skipped (not failed) while Yahoo blocks the server.
   const second = c.checks!.find(x => x.id === "second-source")!;
   assert.equal(second.status, "skipped");
