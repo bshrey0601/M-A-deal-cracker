@@ -1,4 +1,4 @@
-import { CompanyData } from "../types";
+import { Citation, Citations, CompanyData, FactCitation } from "../types";
 import { Quote } from "./quote";
 
 /**
@@ -18,6 +18,11 @@ export interface SecFact {
   filed?: string;
   fy?: number;
   fp?: string;
+  /** Accession number of the filing that reported this value. */
+  accn?: string;
+  /** Set by series(): the XBRL concept and unit the row came from. */
+  concept?: string;
+  unit?: string;
 }
 
 export interface SecCompanyFacts {
@@ -30,6 +35,8 @@ export interface SecSubmissions {
   name?: string;
   sicDescription?: string;
   exchanges?: string[];
+  /** Recent filings as parallel arrays (data.sec.gov/submissions format). */
+  filings?: { recent?: { accessionNumber?: string[]; primaryDocument?: string[] } };
 }
 
 const DAY = 86_400_000;
@@ -46,7 +53,7 @@ function series(facts: SecCompanyFacts, tags: string[], unit = "USD", taxonomy =
   for (const tag of tags) {
     const rows = facts.facts?.[taxonomy]?.[tag]?.units?.[unit];
     const usable = rows?.filter(r => typeof r.val === "number" && r.end && (!r.form || FORMS.has(r.form)));
-    if (usable?.length) return usable;
+    if (usable?.length) return usable.map(r => ({ ...r, concept: `${taxonomy}:${tag}`, unit }));
   }
   return [];
 }
@@ -60,6 +67,15 @@ export interface FlowValue {
   fy?: number;
   /** Year-over-year growth of the latest comparable period, as a fraction. */
   yoy?: number;
+  /** The filed facts that make up `value` (+1 added, -1 subtracted). */
+  parts: Part[];
+  /** The two facts compared for `yoy`: [current, prior]. */
+  yoyParts?: [SecFact, SecFact];
+}
+
+export interface Part {
+  fact: SecFact;
+  sign: 1 | -1;
 }
 
 /** Last-twelve-months value of a duration fact (see file header). */
@@ -91,6 +107,12 @@ export function ltm(rows: SecFact[]): FlowValue | undefined {
       isLTM: true,
       fy: annual.fy,
       yoy: prior.val ? ytd.val / prior.val - 1 : undefined,
+      parts: [
+        { fact: annual, sign: 1 },
+        { fact: ytd, sign: 1 },
+        { fact: prior, sign: -1 },
+      ],
+      yoyParts: [ytd, prior],
     };
   }
   return {
@@ -99,6 +121,8 @@ export function ltm(rows: SecFact[]): FlowValue | undefined {
     isLTM: false,
     fy: annual.fy,
     yoy: priorAnnual?.val ? annual.val / priorAnnual.val - 1 : undefined,
+    parts: [{ fact: annual, sign: 1 }],
+    yoyParts: priorAnnual ? [annual, priorAnnual] : undefined,
   };
 }
 
@@ -139,17 +163,56 @@ const TAGS = {
 };
 
 /** Shares outstanding from the latest cover page (summing share classes reported on the same filing). */
-function sharesOutstanding(facts: SecCompanyFacts): { shares?: number; end?: string } {
+function sharesOutstanding(facts: SecCompanyFacts): { shares?: number; end?: string; used: SecFact[]; method: string } {
   const cover = series(facts, ["EntityCommonStockSharesOutstanding"], "shares", "dei");
   const top = latest(cover);
   if (top) {
     const sameFiling = cover.filter(r => r.end === top.end && r.filed === top.filed);
-    return { shares: sameFiling.reduce((s, r) => s + r.val, 0), end: top.end };
+    return {
+      shares: sameFiling.reduce((s, r) => s + r.val, 0),
+      end: top.end,
+      used: sameFiling,
+      method: `Shares outstanding on the cover page of the latest filing, as of ${top.end}${sameFiling.length > 1 ? " (all share classes added)" : ""}.`,
+    };
   }
   const bs = latest(series(facts, ["CommonStockSharesOutstanding"], "shares"));
-  if (bs) return { shares: bs.val, end: bs.end };
+  if (bs) return { shares: bs.val, end: bs.end, used: [bs], method: `Shares outstanding on the balance sheet as of ${bs.end}.` };
   const wa = latest(series(facts, ["WeightedAverageNumberOfDilutedSharesOutstanding"], "shares"));
-  return { shares: wa?.val, end: wa?.end };
+  return {
+    shares: wa?.val,
+    end: wa?.end,
+    used: wa ? [wa] : [],
+    method: `Weighted-average diluted shares for the period ended ${wa?.end} (no shares-outstanding figure was filed).`,
+  };
+}
+
+/** Link to the filing on sec.gov: the main document when known, else the filing index. */
+export function filingUrl(cik: number | undefined, accn: string | undefined, docs: Map<string, string>): string | undefined {
+  if (!cik || !accn) return undefined;
+  const base = `https://www.sec.gov/Archives/edgar/data/${cik}/${accn.replace(/-/g, "")}`;
+  const doc = docs.get(accn);
+  return doc ? `${base}/${doc}` : `${base}/${accn}-index.htm`;
+}
+
+function primaryDocs(submissions: SecSubmissions | undefined): Map<string, string> {
+  const recent = submissions?.filings?.recent;
+  const map = new Map<string, string>();
+  recent?.accessionNumber?.forEach((a, i) => {
+    const doc = recent.primaryDocument?.[i];
+    if (doc) map.set(a, doc);
+  });
+  return map;
+}
+
+const describePeriod = (f: SecFact) => (f.start ? `${f.start} to ${f.end}` : `as of ${f.end}`);
+
+function flowMethod(v: FlowValue): string {
+  if (!v.isLTM) return `Fiscal year ended ${v.end}, as filed.`;
+  const [annual, ytd, prior] = v.parts.map(p => p.fact);
+  return (
+    `Last twelve months to ${v.end} = fiscal year (${describePeriod(annual)}) ` +
+    `+ current year-to-date (${describePeriod(ytd)}) − prior-year year-to-date (${describePeriod(prior)}).`
+  );
 }
 
 export function mapSecToCompany(
@@ -173,31 +236,44 @@ export function mapSecToCompany(
   const cash = latest(series(facts, TAGS.cash));
   const equityLatest = latest(series(facts, TAGS.equity));
   const bsDate = cash?.end ?? equityLatest?.end;
-  const at = (tags: string[], date = bsDate) =>
-    date ? series(facts, tags).filter(r => r.end === date).sort(newest)[0]?.val : undefined;
+  const atF = (tags: string[], date = bsDate) =>
+    date ? series(facts, tags).filter(r => r.end === date).sort(newest)[0] : undefined;
 
-  let debt: number;
+  // Every filed number that goes into net debt, with its sign.
+  const debtParts: Part[] = [];
   let debtDate = bsDate;
-  const ltdTotal = at(TAGS.longTermDebtTotal);
-  const ltdNon = at(TAGS.longTermDebtNoncurrent);
-  if (ltdTotal !== undefined) debt = ltdTotal;
-  else if (ltdNon !== undefined) debt = ltdNon + (at(TAGS.longTermDebtCurrent) ?? 0);
-  else {
+  const ltdTotal = atF(TAGS.longTermDebtTotal);
+  const ltdNon = atF(TAGS.longTermDebtNoncurrent);
+  const addDebt = (f: SecFact | undefined) => f && debtParts.push({ fact: f, sign: 1 });
+  if (ltdTotal) addDebt(ltdTotal);
+  else if (ltdNon) {
+    addDebt(ltdNon);
+    addDebt(atF(TAGS.longTermDebtCurrent));
+  } else {
     // Some filers tag total debt only in the annual report: use the latest date that has it.
     const older = latest(series(facts, TAGS.longTermDebtTotal)) ?? latest(series(facts, TAGS.longTermDebtNoncurrent));
     debtDate = older?.end;
-    debt = older
-      ? (at(TAGS.longTermDebtTotal, older.end) ??
-         (at(TAGS.longTermDebtNoncurrent, older.end) ?? 0) + (at(TAGS.longTermDebtCurrent, older.end) ?? 0))
-      : 0;
-    if (!older) warnings.push("No long-term debt reported in filings; treated as 0.");
-    else warnings.push(`Long-term debt taken from ${older.end}, the latest filing that reports it.`);
+    if (older) {
+      const total = atF(TAGS.longTermDebtTotal, older.end);
+      if (total) addDebt(total);
+      else {
+        addDebt(atF(TAGS.longTermDebtNoncurrent, older.end));
+        addDebt(atF(TAGS.longTermDebtCurrent, older.end));
+      }
+      warnings.push(`Long-term debt taken from ${older.end}, the latest filing that reports it.`);
+    } else warnings.push("No long-term debt reported in filings; treated as 0.");
   }
-  debt += at(TAGS.shortTermDebt, debtDate) ?? 0;
-  const cashTotal = (cash?.val ?? 0) + (at(TAGS.shortTermInvestments) ?? 0);
-  const equity = at(TAGS.equity) ?? equityLatest?.val;
+  addDebt(atF(TAGS.shortTermDebt, debtDate));
+  const cashParts: Part[] = [cash, atF(TAGS.shortTermInvestments)]
+    .filter((f): f is SecFact => !!f)
+    .map(fact => ({ fact, sign: -1 }));
+  const debt = debtParts.reduce((s, p) => s + p.fact.val, 0);
+  const cashTotal = cashParts.reduce((s, p) => s + p.fact.val, 0);
+  const equityFact = atF(TAGS.equity) ?? equityLatest;
+  const equity = equityFact?.val;
 
-  const { shares } = sharesOutstanding(facts);
+  const sharesInfo = sharesOutstanding(facts);
+  const { shares } = sharesInfo;
   if (!shares) throw new Error(`SEC filings for ${ticker} do not report shares outstanding.`);
 
   const sharesMn = shares / M;
@@ -220,6 +296,74 @@ export function mapSecToCompany(
   if (da === undefined) warnings.push("D&A not reported; DCF uses the default 5% of revenue.");
   if (capex === undefined) warnings.push("CapEx not reported; DCF uses the default 5% of revenue.");
   if (!niV) warnings.push("Net income not reported; set to 0.");
+
+  // ---- citations: the filing behind every figure ----
+  const docs = primaryDocs(submissions);
+  const toCite = (p: Part): FactCitation => ({
+    concept: p.fact.concept ?? "",
+    value: p.fact.val,
+    unit: p.fact.unit ?? "USD",
+    start: p.fact.start,
+    end: p.fact.end,
+    form: p.fact.form,
+    filed: p.fact.filed,
+    accn: p.fact.accn,
+    url: filingUrl(facts.cik, p.fact.accn, docs),
+    sign: p.sign,
+  });
+  const fromFlow = (v: FlowValue | undefined, extra = ""): Citation | undefined =>
+    v && { kind: "sec", method: flowMethod(v) + extra, facts: v.parts.map(toCite) };
+  const derived = (method: string, inputs: Citation["inputs"]): Citation => ({ kind: "derived", method, facts: [], inputs });
+  const priceKind = quote.provider === "entered by user" ? "user" : "market";
+
+  const citations: Citations = {
+    currentPrice: {
+      kind: priceKind,
+      method: priceKind === "user"
+        ? "Share price typed in by the user because no live price source answered. Not from a filing."
+        : `Last traded price from ${quote.provider}${quote.time ? ` at ${quote.time.toISOString()}` : ""}. Market data, not from a filing; may be delayed.`,
+      facts: [],
+    },
+    sharesOutstanding: { kind: "sec", method: sharesInfo.method, facts: sharesInfo.used.map(fact => toCite({ fact, sign: 1 })) },
+    marketCap: derived("Share price × shares outstanding.", ["currentPrice", "sharesOutstanding"]),
+    revenue: fromFlow(revenue),
+    ebit: fromFlow(ebitV),
+    netIncome: fromFlow(niV),
+    da: fromFlow(daV),
+    capex: fromFlow(capexV, " Filed as a cash outflow (payments for property, plant and equipment); shown as a positive number."),
+    dividendPerShare: fromFlow(dpsV),
+    ebitda: derived("Operating income (EBIT) + depreciation & amortization.", ["ebit", "da"]),
+    netDebt: {
+      kind: "sec",
+      method:
+        `Borrowings (as of ${debtDate ?? "n/a"}) − cash and short-term investments (as of ${bsDate ?? "n/a"}). ` +
+        "Operating and finance leases are excluded.",
+      facts: [...debtParts, ...cashParts].map(toCite),
+    },
+    bookValuePerShare: equityFact
+      ? {
+          kind: "sec",
+          method: `Total stockholders' equity (as of ${equityFact.end}) ÷ shares outstanding.`,
+          facts: [toCite({ fact: equityFact, sign: 1 })],
+          inputs: ["sharesOutstanding"],
+        }
+      : undefined,
+    eps: derived("Net income ÷ shares outstanding (uses current shares, not the filed EPS figure).", ["netIncome", "sharesOutstanding"]),
+    peRatio: derived("Share price ÷ EPS.", ["currentPrice", "eps"]),
+    evEbitda: derived("Enterprise value (market cap + net debt) ÷ EBITDA.", ["marketCap", "netDebt", "ebitda"]),
+    evRevenue: derived("Enterprise value (market cap + net debt) ÷ revenue.", ["marketCap", "netDebt", "revenue"]),
+    pbRatio: derived("Share price ÷ book value per share.", ["currentPrice", "bookValuePerShare"]),
+    ebitdaMargin: derived("EBITDA ÷ revenue.", ["ebitda", "revenue"]),
+    netMargin: derived("Net income ÷ revenue.", ["netIncome", "revenue"]),
+    revenueGrowthYoY: revenue.yoyParts
+      ? {
+          kind: "sec",
+          method: `Revenue for ${describePeriod(revenue.yoyParts[0])} compared with the same period a year earlier (${describePeriod(revenue.yoyParts[1])}).`,
+          facts: [toCite({ fact: revenue.yoyParts[0], sign: 1 }), toCite({ fact: revenue.yoyParts[1], sign: 1 })],
+        }
+      : undefined,
+  };
+  for (const k of Object.keys(citations) as (keyof Citations)[]) if (!citations[k]) delete citations[k];
 
   const name = submissions?.name ?? facts.entityName ?? quote.name ?? ticker;
   const sector = submissions?.sicDescription ?? "Unclassified";
@@ -264,5 +408,6 @@ export function mapSecToCompany(
       marketTime: quote.time?.toISOString(),
       warnings,
     },
+    citations,
   };
 }

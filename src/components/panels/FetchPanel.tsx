@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useDeal } from "../../context/DealContext";
 import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../services/dataService";
-import { CompanyData } from "../../types";
+import { CitedField, CompanyData } from "../../types";
+import { Cited, SourceDialog } from "../SourceDialog";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
@@ -248,8 +249,12 @@ function FetchPreview({ target, acquirer }: { target: any, acquirer: any }) {
   );
 }
 
-function CompanyCard({ company, type, color }: { company: any, type: string, color: string }) {
+function CompanyCard({ company, type, color }: { company: CompanyData, type: string, color: string }) {
   const cur = company.currency;
+  const [open, setOpen] = useState<CitedField | "all" | null>(null);
+  const C = ({ f, children }: { f: CitedField; children: React.ReactNode }) => (
+    <Cited company={company} field={f} onOpen={setOpen}>{children}</Cited>
+  );
   return (
     <div className="bg-bg-card border border-border-alt rounded-xl p-6 relative overflow-hidden group">
       <div className="flex items-center justify-between mb-2">
@@ -263,19 +268,28 @@ function CompanyCard({ company, type, color }: { company: any, type: string, col
       <p className="text-[11px] text-text-muted mb-3 leading-relaxed bg-bg/40 p-2 rounded border border-border-alt/30 select-none italic font-mono truncate">{company.description}</p>
 
       <SourceBadge company={company} />
-      
+
+      <div className="flex items-center justify-between mb-3 text-[10px] text-text-muted">
+        <span>Click any underlined number to see the filing it comes from.</span>
+        <button onClick={() => setOpen("all")} className="font-bold uppercase tracking-wider hover:text-accent-blue shrink-0 ml-3">All sources</button>
+      </div>
+
       <div className="grid grid-cols-3 gap-6 mb-8">
-        <MetricBox label="Last Price" val={`${cur}${fmt(company.currentPrice, 2)}`} sub={`${cur}${fmt(company.fiftyTwoWeekLow, 0)} Low`} />
-        <MetricBox label="Market Cap" val={`${cur}${fmt(company.marketCap)} Mn`} sub={`${fmt(company.sharesOutstanding, 0)} Mn Shares`} />
-        <MetricBox label="EV/EBITDA" val={fmtX(company.evEbitda)} sub={`P/E ${fmtX(company.peRatio)}`} />
+        <MetricBox label="Last Price" val={<C f="currentPrice">{`${cur}${fmt(company.currentPrice, 2)}`}</C>} sub={`${cur}${fmt(company.fiftyTwoWeekLow, 0)} Low`} />
+        <MetricBox label="Market Cap" val={<C f="marketCap">{`${cur}${fmt(company.marketCap)} Mn`}</C>} sub={<C f="sharesOutstanding">{`${fmt(company.sharesOutstanding, 0)} Mn Shares`}</C>} />
+        <MetricBox label="EV/EBITDA" val={<C f="evEbitda">{fmtX(company.evEbitda)}</C>} sub={<C f="peRatio">{`P/E ${fmtX(company.peRatio)}`}</C>} />
       </div>
 
       <div className="space-y-2">
-         <DataRow label="LTM Revenue" val={`${cur}${fmt(company.revenue)} Mn`} trend={`${fmtP(company.revenueGrowthYoY, 1)}`} />
-         <DataRow label="EBITDA Margin" val={`${fmtP(company.ebitdaMargin, 1)}`} trend={fmt(company.ebitda) + " Mn"} />
-         <DataRow label="Net Earnings" val={`${cur}${fmt(company.netIncome)} Mn`} trend={fmtP(company.netMargin, 1)} highlight />
-         <DataRow label="Net Debt / Cash" val={`${cur}${fmt(company.netDebt)} Mn`} trend={company.source?.verified ? "Reported" : "Estimate"} />
+         <DataRow label={company.fiscalYear?.startsWith("LTM") ? "LTM Revenue" : "Revenue"} val={<C f="revenue">{`${cur}${fmt(company.revenue)} Mn`}</C>} trend={<C f="revenueGrowthYoY">{fmtP(company.revenueGrowthYoY, 1)}</C>} />
+         <DataRow label="EBITDA Margin" val={<C f="ebitdaMargin">{fmtP(company.ebitdaMargin, 1)}</C>} trend={<C f="ebitda">{fmt(company.ebitda) + " Mn"}</C>} />
+         <DataRow label="Operating Income (EBIT)" val={<C f="ebit">{`${cur}${fmt(company.ebit)} Mn`}</C>} trend={<C f="da">{`D&A ${fmt(company.da)}`}</C>} />
+         <DataRow label="Net Earnings" val={<C f="netIncome">{`${cur}${fmt(company.netIncome)} Mn`}</C>} trend={<C f="netMargin">{fmtP(company.netMargin, 1)}</C>} highlight />
+         <DataRow label="CapEx" val={<C f="capex">{`${cur}${fmt(company.capex)} Mn`}</C>} trend={<C f="bookValuePerShare">{`BV/sh ${fmt(company.bookValuePerShare, 2)}`}</C>} />
+         <DataRow label="Net Debt / Cash" val={<C f="netDebt">{`${cur}${fmt(company.netDebt)} Mn`}</C>} trend={company.source?.verified ? "Reported" : "Estimate"} />
       </div>
+
+      {open && <SourceDialog company={company} field={open} onOpen={setOpen} onClose={() => setOpen(null)} />}
     </div>
   );
 }
