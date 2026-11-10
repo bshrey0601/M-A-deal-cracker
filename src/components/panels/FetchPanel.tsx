@@ -4,6 +4,7 @@ import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../s
 import { CitedField, CompanyData } from "../../types";
 import { Cited, SourceDialog } from "../SourceDialog";
 import { AccuracyChecks } from "../AccuracyChecks";
+import { DueDiligencePanel } from "../DueDiligencePanel";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
@@ -236,6 +237,8 @@ function FetchPreview({ target, acquirer }: { target: any, acquirer: any }) {
         <CompanyCard company={target} type="TARGET" color="var(--color-accent-blue)" />
         <CompanyCard company={acquirer} type="ACQUIRER" color="var(--color-accent-blue)" />
       </div>
+
+      <DueDiligencePanel target={target} acquirer={acquirer} />
 
       <footer className="flex items-center justify-between border-t border-border-alt pt-6 mt-10">
         <div className="flex gap-4">

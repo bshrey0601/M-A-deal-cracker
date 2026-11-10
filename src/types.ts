@@ -36,6 +36,27 @@ export interface CompanyData {
   citations?: Citations;
   /** Automatic accuracy checks run on the figures (SEC-sourced companies only). */
   checks?: AccuracyCheck[];
+  /** Automated due-diligence red flags (SEC-sourced companies only). */
+  dueDiligence?: DueDiligence;
+}
+
+/** One automated due-diligence finding from SEC data. */
+export interface DDFlag {
+  id: string;
+  title: string;
+  /** high = serious red flag; medium = review; low = minor; ok = checked, nothing found; na = data not available. */
+  severity: "high" | "medium" | "low" | "ok" | "na";
+  detail: string;
+  score?: number;
+  /** Filings on SEC.gov behind this finding. */
+  links?: { label: string; url: string }[];
+}
+
+export interface DueDiligence {
+  asOf: string;
+  /** End date of the latest fiscal year analysed. */
+  fiscalYear?: string;
+  flags: DDFlag[];
 }
 
 export interface AccuracyCheck {
