@@ -7,11 +7,15 @@ import html2canvas from "html2canvas";
 import { computeAccretion } from "../../lib/accretion";
 import DOMPurify from "dompurify";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
+import { buildFacts, factSheet, summarizeCheck, CheckedNumber } from "../../lib/factCheck";
+import { annotateMemo } from "../../lib/annotateMemo";
 
 export function SummaryPanel() {
   const { state, updateSection } = useDeal();
   const [aiLoading, setAiLoading] = useState(false);
   const [thesisHtml, setThesisHtml] = useState<string | null>(null);
+  // Numbers found in the memo and whether each matches a model figure (null until a memo is generated).
+  const [checked, setChecked] = useState<CheckedNumber[] | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const health = useMemo(() => {
@@ -106,22 +110,23 @@ export function SummaryPanel() {
   const generateThesis = async () => {
     setAiLoading(true);
     setThesisHtml(null);
+    setChecked(null);
+    const facts = buildFacts(state, acc);
 
     const prompt = `Act as a Senior Managing Director in Goldman Sachs Global M&A Group. Your task is to produce a "Boutique-Grade" Board of Directors Investment Mandate. 
     The output must be strictly structured using professional HTML tags (<h3>, <h4>, <ul>, <li>, <strong>). 
     Avoid all conversational filler ("Certainly", "Here is your report"). Start immediately with the title.
     
-    DEAL CORE DATA:
-    - Acquirer: ${state.acquirer?.name}
-    - Target: ${state.target?.name}
-    - Consideration: ${state.deal.cashPct}% Cash / ${state.deal.stockPct}% Equity
-    - Offer Price: ${state.target?.currency}${state.deal.offer} (Premium: ${fmtP((state.deal.offer / state.target!.currentPrice - 1) * 100)})
-    - Implied EV: ${state.target?.currency}${fmt(state.deal.offer * state.target!.sharesOutstanding + state.target!.netDebt)}M
-    - WACC/Hurdle Rate: ${state.wacc.toFixed(2)}%
-    - Run-Rate Synergies (pre-tax, realized): ${state.target?.currency}${fmt(acc.totalSynergies, 1)}M (Revenue ${fmt(acc.revenueSynergies, 1)}M / Cost ${fmt(acc.costSynergies, 1)}M); One-time integration costs ${fmt(acc.integrationCosts, 1)}M
-    - PPA: Goodwill ${fmt(acc.goodwill)}M, Identified Intangibles ${fmt(acc.identifiedIntangibles)}M, Annual Amortization ${fmt(acc.annualAmortization, 1)}M
-    - Pro-Forma EPS: ${fmt(acc.proFormaEPS, 2)} vs Standalone ${fmt(acc.standaloneEPS, 2)} (${acc.meaningful ? fmtP(acc.accretionPct, 2) + (acc.accretive ? " accretive" : " dilutive") : "not meaningful: acquirer loss-making"}); Breakeven pre-tax synergies ${fmt(acc.breakevenSynergies, 1)}M
-    Use ONLY the figures above; do not invent numbers that are not provided.
+    DEAL: ${state.acquirer?.name} (acquirer) to buy ${state.target?.name} (target).
+    EPS impact: ${acc.meaningful ? (acc.accretive ? "accretive" : "dilutive") : "not meaningful (acquirer is loss-making)"}.
+
+    FACT SHEET (money in millions; every number you write must come from this list):
+${factSheet(facts, state.target!.currency)}
+
+    NUMBER RULES (every number in your memo is automatically checked against the fact sheet; any other number is flagged as unverified):
+    - Use only numbers from the fact sheet. You may round them or write millions as billions (e.g. 4,586.7M as 4.6 billion).
+    - Do not calculate new figures (no sums, differences, ratios or per-share maths of your own) and do not cite outside data or benchmarks as numbers.
+    - Write percentages with "%", multiples with "x", and money with the currency symbol and "M" or "billion".
     
     REQUIRED STRUCTURE:
     1. EXECUTUIVE SUMMARY: A high-level overview of the strategic logic and total value potential.
@@ -155,7 +160,10 @@ export function SummaryPanel() {
       }
 
       const thesisContent = data.content || data.choices?.[0]?.message?.content || "Failed to engage Mandate Engine.";
-      setThesisHtml(thesisContent);
+      // Sanitize first, then mark every number as matched to a model figure or not.
+      const result = annotateMemo(DOMPurify.sanitize(thesisContent), facts);
+      setThesisHtml(result.html);
+      setChecked(result.checked);
       updateSection("thesisGenerated", true as any);
     } catch (err) {
       console.error("Thesis AI error:", err);
@@ -183,7 +191,7 @@ export function SummaryPanel() {
       </div>
 
       <section className="bg-bg-card border border-border-alt rounded-2xl p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-4">
+        <div className="absolute top-0 right-0 p-4 pointer-events-none">
           <span className="text-[10px] bg-accent-blue/10 text-accent-blue border border-accent-blue/20 px-2 py-0.5 rounded font-bold uppercase tracking-widest leading-none">Deal Intelligence</span>
         </div>
         
@@ -224,6 +232,8 @@ export function SummaryPanel() {
                  <p>CLASSIFICATION: BOARD-LEVEL HIGH CONFIDENTIAL</p>
                </div>
              </div>
+
+            {checked && <FactCheckBanner checked={checked} />}
 
             <div 
               className="prose prose-invert prose-sm max-w-none 
@@ -274,10 +284,35 @@ export function SummaryPanel() {
            
            <div className="bg-bg border border-border-alt rounded px-4 py-2 flex items-center gap-3">
               <Info size={14} className="text-accent-blue" />
-              <span className="text-[9px] font-mono text-text-muted uppercase tracking-tighter">This narrative is generated via Groq AI logic. High fidelity synthesis.</span>
+              <span className="text-[9px] font-mono text-text-muted uppercase tracking-tighter">AI-written narrative. Every number is checked against the model's figures.</span>
            </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function FactCheckBanner({ checked }: { checked: CheckedNumber[] }) {
+  const s = summarizeCheck(checked);
+  const total = s.verified + s.unverified;
+  const clean = s.unverified === 0;
+  return (
+    <div className={cn(
+      "mb-4 rounded-lg border p-3 text-[12px] leading-relaxed",
+      clean ? "border-accent-green/30 bg-accent-green/5" : "border-accent-red/30 bg-accent-red/5",
+    )}>
+      <p className="font-bold text-text-primary">
+        {total === 0
+          ? "Fact check: the memo contains no financial figures to check."
+          : clean
+          ? `Fact check: all ${total} numbers in this memo match the model's figures.`
+          : `Fact check: ${s.unverified} of ${total} numbers in this memo don't match any figure in the model.`}
+      </p>
+      <p className="text-text-secondary mt-1">
+        {clean
+          ? "Hover over a number underlined in green to see the figure it matches and where it comes from."
+          : <>Numbers highlighted in red ({s.unverifiedTexts.slice(0, 6).join(", ")}{s.unverifiedTexts.length > 6 ? ", …" : ""}) may be invented or miscalculated by the AI. Check or remove them before using the memo. Green-underlined numbers match the model; hover to see the source.</>}
+      </p>
     </div>
   );
 }
