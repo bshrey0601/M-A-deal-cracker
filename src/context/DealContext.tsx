@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
 import { DealState, CompanyData } from "../types";
+import { DEFAULT_MC } from "../lib/monteCarlo";
 
 const initialState: DealState = {
   target: null,
@@ -21,7 +22,8 @@ const initialState: DealState = {
     sev: 0, itI: 0, leg: 0
   },
   selectedPrecedents: [],
-  peers: []
+  peers: [],
+  mc: DEFAULT_MC
 };
 
 interface DealContextType {

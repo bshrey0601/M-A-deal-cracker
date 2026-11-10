@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { DcfMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { computeDCF } from "../../lib/dcf";
@@ -169,6 +170,8 @@ export function DCFPanel() {
           </div>
         </div>
       </div>
+
+      <DcfMonteCarlo />
     </div>
   );
 }

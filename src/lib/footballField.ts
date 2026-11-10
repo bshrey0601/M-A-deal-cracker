@@ -2,6 +2,7 @@ import { CompanyData, DealState, PrecedentDeal } from "../types";
 import { computeDCF } from "./dcf";
 import { median, percentile } from "./stats";
 import { impliedPrice, meaningful } from "./peers";
+import { simulateDcf } from "./monteCarlo";
 
 export { percentile };
 
@@ -63,6 +64,13 @@ export function footballField(state: DealState, precedents: PrecedentDeal[]): Fi
   }
   if (sens.length === 4) {
     rows.push({ method: "DCF sensitivity (WACC ±1%, growth ±0.5%)", low: Math.min(...sens), high: Math.max(...sens), mid: computeDCF(state.dcf.base, state.dcf, t)?.price, basis: "Base case re-run with WACC one point higher/lower and terminal growth half a point higher/lower." });
+  }
+
+  // Monte Carlo: thousands of DCFs with growth, margin, WACC and terminal growth drawn at random.
+  const sim = state.mc ? simulateDcf(state, t) : undefined;
+  if (sim) {
+    const p = sim.price;
+    rows.push({ method: "Monte Carlo DCF (10th–90th percentile)", low: p.p10, high: p.p90, mid: p.p50, basis: `${p.n.toLocaleString("en")} simulated DCFs: growth between the bear and bull cases, EBIT margin ±${state.mc.marginSd} pt, WACC ±${state.mc.waccSd} pt, terminal growth ±${state.mc.tgrSd} pt (1 standard deviation). Marker at the median.` });
   }
 
   // Trading comps: peers' current multiples applied to the target's own figures.

@@ -1,6 +1,7 @@
 import { CompanyData, DealState } from "../types";
 import { AccretionResult } from "./accretion";
 import { computeDCF } from "./dcf";
+import { simulateAccretion, simulateDcf } from "./monteCarlo";
 
 /**
  * Fact-checking for the AI-written memo. The model gets a fact sheet of every figure it may use;
@@ -88,6 +89,20 @@ export function buildFacts(state: DealState, acc: AccretionResult): Fact[] {
     if (r) {
       add(`${name} case DCF value per share`, r.price, "perShare", "model");
       add(`${name} case DCF enterprise value`, r.EV, "money", "model");
+    }
+  }
+  if (state.mc) {
+    const sim = simulateDcf(state, t);
+    if (sim) {
+      add("Monte Carlo DCF median value per share", sim.price.p50, "perShare", "model");
+      add("Monte Carlo DCF 10th percentile value per share", sim.price.p10, "perShare", "model");
+      add("Monte Carlo DCF 90th percentile value per share", sim.price.p90, "perShare", "model");
+      add("Probability the offer exceeds the DCF value (Monte Carlo)", sim.probOfferAbove * 100, "pct", "model");
+    }
+    const accSim = simulateAccretion(state, t, a);
+    if (accSim) {
+      add("Monte Carlo median EPS accretion / dilution", accSim.accretion.p50, "pct", "model");
+      add("Probability the deal is EPS accretive (Monte Carlo)", accSim.probAccretive * 100, "pct", "model");
     }
   }
   return facts;

@@ -225,4 +225,19 @@ export interface DealState {
   /** Trading comparables for the target (Market Cross-Check). */
   peers: Peer[];
   peerInfo?: PeerSearchInfo;
+  /** Monte Carlo settings: how uncertain each input is (see src/lib/monteCarlo.ts). */
+  mc: {
+    runs: number;
+    /** Standard deviations, in percentage points. */
+    marginSd: number;
+    waccSd: number;
+    tgrSd: number;
+    /** Synergy realisation range, % of plan. */
+    synergyLow: number;
+    synergyHigh: number;
+    finRateSd: number;
+    /** Acquirer share price move, % standard deviation. */
+    acquirerPriceSd: number;
+    seed: number;
+  };
 }
