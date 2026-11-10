@@ -22,7 +22,7 @@ before(() => {
     if (url.includes("quote.cnbc.com") && url.includes("symbols=AAL")) {
       return json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: "AAL", code: 0, last: "12.34", currencyCode: "USD", name: "American Airlines" }] } });
     }
-    if (url.includes("/companyfacts/CIK0000789019.json")) return json(secFacts());
+    if (url.includes("/companyfacts/CIK0000789019.json") || url.includes("/companyfacts/CIK0000320193.json")) return json(secFacts());
     if (url.includes("/submissions/CIK0000320193.json")) return json({ name: "Apple Inc." });
     if (url.includes("/submissions/CIK0000789019.json")) return json({ name: "MICROSOFT CORP", sicDescription: "Services-Prepackaged Software", exchanges: ["Nasdaq"] });
     if (url.includes("stooq.com") && url.includes("s=msft.us")) {
@@ -79,6 +79,7 @@ test("diagnostics reports each source without secrets", async () => {
   const { diagnostics } = await import("./marketService");
   const d = await diagnostics();
   assert.equal(d.sources["SEC EDGAR (financials)"].ok, true);
+  assert.match(d.sources["SEC EDGAR (financials)"].detail, /filed line items/);
   assert.equal(d.sources["Yahoo chart (price)"].ok, false);
   assert.match(d.sources["Yahoo chart (price)"].detail, /429/);
   assert.equal(d.sources["Stooq (price)"].ok, false);

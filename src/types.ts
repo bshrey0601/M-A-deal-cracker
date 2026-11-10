@@ -92,6 +92,8 @@ export interface DataSource {
   /** Exchange timestamp of the quoted price (ISO), when known. */
   marketTime?: string;
   warnings: string[];
+  /** Set when official SEC filings could not be loaded for a US company and another source was used instead. */
+  secUnavailable?: string;
 }
 
 export interface PrecedentDeal {

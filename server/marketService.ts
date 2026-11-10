@@ -49,13 +49,14 @@ function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** fetch with a timeout and (unless retry is false) one polite retry on 429 / 5xx. */
-async function request(url: string, headers: Record<string, string>, retry = true): Promise<Response> {
+async function request(url: string, headers: Record<string, string>, retry = true, timeoutMs = 10_000): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
-      res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+      res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
     } catch (e: any) {
-      throw new MarketDataError(502, `${new URL(url).host} could not be reached (${e?.cause?.code ?? e?.name ?? "network error"})`);
+      const why = e?.name === "TimeoutError" ? `timed out after ${timeoutMs / 1000}s` : (e?.cause?.code ?? e?.name ?? "network error");
+      throw new MarketDataError(502, `${new URL(url).host} could not be reached (${why})`);
     }
     if (retry && (res.status === 429 || res.status >= 500) && attempt === 0) {
       await sleep(1200 + Math.random() * 800);
@@ -65,8 +66,8 @@ async function request(url: string, headers: Record<string, string>, retry = tru
   }
 }
 
-async function getJson(url: string, headers: Record<string, string>) {
-  const res = await request(url, { Accept: "application/json", ...headers });
+async function getJson(url: string, headers: Record<string, string>, timeoutMs?: number) {
+  const res = await request(url, { Accept: "application/json", ...headers }, true, timeoutMs);
   if (!res.ok) {
     const host = new URL(url).host;
     // The SEC refuses clients that don't identify themselves with a contact email.
@@ -164,20 +165,22 @@ const secHeaders = () => ({ "User-Agent": secUserAgent(), Accept: "application/j
 
 const secTickerMap = () =>
   memo("sec:tickers", 24 * 3600_000, async () => {
-    const json = await getJson("https://www.sec.gov/files/company_tickers.json", secHeaders());
+    const json = await getJson("https://www.sec.gov/files/company_tickers.json", secHeaders(), SEC_TIMEOUT);
     const map = new Map<string, number>();
     for (const row of Object.values<any>(json)) map.set(String(row.ticker).toUpperCase(), row.cik_str);
     return map;
   });
 
+// Company facts for large filers are several MB; give the SEC more time than a price quote.
+const SEC_TIMEOUT = 30_000;
 const pad = (cik: number) => String(cik).padStart(10, "0");
 const companyFacts = (cik: number) =>
   memo<SecCompanyFacts>(`sec:facts:${cik}`, 6 * 3600_000, () =>
-    getJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`, secHeaders()),
+    getJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`, secHeaders(), SEC_TIMEOUT),
   );
 const submissions = (cik: number) =>
   memo<SecSubmissions>(`sec:subs:${cik}`, 24 * 3600_000, () =>
-    getJson(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, secHeaders()),
+    getJson(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, secHeaders(), SEC_TIMEOUT),
   );
 
 /** A share price the user typed in (e.g. from their broker) when no live price source answers. */
@@ -289,7 +292,15 @@ export function getCompany(ticker: string, manualPrice?: number): Promise<Compan
       errors.push(`SEC EDGAR: ${e.message}`);
     }
     try {
-      return await yahooCompany(ticker);
+      const y = await yahooCompany(ticker);
+      if (errors.length && y.source) {
+        // A US filer whose SEC filings failed: say so plainly instead of silently showing Yahoo figures.
+        const reason = errors[0].replace(/^SEC EDGAR: /, "");
+        console.error(`SEC EDGAR failed for ${ticker}, using Yahoo Finance: ${reason}`);
+        y.source.secUnavailable = reason;
+        y.source.warnings.unshift(`Official SEC filings could not be loaded (${reason}), so these figures are from Yahoo Finance and are not linked to filings.`);
+      }
+      return y;
     } catch (e: any) {
       if (e instanceof MarketDataError && e.status === 404) notFound++;
       errors.push(e.message);
@@ -316,8 +327,10 @@ export async function diagnostics() {
   const [sec, yahooChart, cnbc, stooq, finnhub] = await Promise.all([
     probe(async () => {
       const map = await secTickerMap(); // www.sec.gov
-      const subs = await getJson("https://data.sec.gov/submissions/CIK0000320193.json", secHeaders());
-      return `reached www.sec.gov (${map.size} tickers) and data.sec.gov (${subs?.name ?? "?"})`;
+      const subs = await getJson("https://data.sec.gov/submissions/CIK0000320193.json", secHeaders(), SEC_TIMEOUT);
+      const facts = await companyFacts(320193);
+      const n = Object.keys(facts?.facts?.["us-gaap"] ?? {}).length;
+      return `reached www.sec.gov (${map.size} tickers) and data.sec.gov (${subs?.name ?? "?"}, ${n} filed line items)`;
     }),
     probe(async () => price(await yahooChartQuote("AAPL", { ignoreCooldown: true }))),
     probe(async () => price(await cnbcQuote("AAPL"))),

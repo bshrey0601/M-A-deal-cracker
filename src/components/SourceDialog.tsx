@@ -120,7 +120,9 @@ function Detail({ company, field, onOpen }: { company: CompanyData; field: Cited
     const verified = company.source?.verified;
     return (
       <p className="text-[12px] text-text-secondary leading-relaxed">
-        {verified
+        {company.source?.secUnavailable
+          ? <>The company's official SEC filings could not be loaded on the server (<em>{company.source.secUnavailable}</em>), so this figure comes from <strong>{company.source.provider}</strong> and is not linked to a filing. Try again in a minute; if it keeps happening, open <code>/api/diagnostics</code> on the server to see why.</>
+          : verified
           ? <>This figure comes from <strong>{company.source?.provider}</strong>. It is not linked to an official filing, so check it against the company's annual report before relying on it.</>
           : <>This figure is an <strong>AI estimate</strong>. It is not verified and has no source filing. Do not rely on it.</>}
       </p>
