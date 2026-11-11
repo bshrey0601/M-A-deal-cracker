@@ -7,7 +7,7 @@ import { footballField } from "../lib/footballField";
 /** Football field chart: implied value per target share by method, against the offer and today's price. */
 export function FootballField({ state }: { state: DealState }) {
   const t = state.target!;
-  const rows = useMemo(() => footballField(state, PRECEDENTS), [state]);
+  const rows = useMemo(() => footballField(state, [...PRECEDENTS, ...state.livePrecedents]), [state]);
   const offer = state.deal.offer;
   const price = t.currentPrice;
 

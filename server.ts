@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { getCompany, diagnostics, MarketDataError } from "./server/marketService";
 import { getMarketInputs } from "./server/marketInputs";
 import { getPeers } from "./server/peers";
+import { getSecPrecedents } from "./server/secDeals";
 import { complete, llmLabel, LlmError, NO_AI_KEY, parseJsonReply } from "./server/llm";
 
 dotenv.config();
@@ -102,6 +103,19 @@ async function startServer() {
       const status = error instanceof MarketDataError ? error.status : 500;
       console.error(`Peers error for ${ticker}:`, error?.message ?? error);
       res.status(status === 404 ? 404 : 502).json({ error: error?.message ?? "Peers unavailable." });
+    }
+  });
+
+  // Precedent transactions read from SEC merger filings in the target's industry (server/secDeals.ts).
+  app.get("/api/precedents/:ticker", async (req, res) => {
+    const ticker = cleanTicker(req.params.ticker);
+    if (!ticker) return res.status(400).json({ error: "Invalid ticker symbol." });
+    try {
+      res.json(await getSecPrecedents(ticker));
+    } catch (error: any) {
+      const status = error instanceof MarketDataError ? error.status : 500;
+      console.error(`Precedents error for ${ticker}:`, error?.message ?? error);
+      res.status(status === 404 ? 404 : 502).json({ error: error?.message ?? "Precedents unavailable." });
     }
   });
 

@@ -126,6 +126,27 @@ export interface PrecedentDeal {
   evRev: number | null;
   prem: number | null;
   type: string;
+  /** Set for deals read live from SEC merger filings: where each figure comes from. */
+  sec?: {
+    form: string;
+    filed: string;
+    /** Link to the filing document on sec.gov. */
+    url: string;
+    target: string;
+    acquirer?: string;
+    /** Offer price per share and the filing's sentence stating it. */
+    offer: number;
+    offerQuote: string;
+    premiumQuote?: string;
+    sic?: string;
+    /** Period of the target financials used (as filed before the deal filing). */
+    period: string;
+    /** Millions. Equity value = offer × shares outstanding. */
+    equityValue: number;
+    netDebt: number;
+    revenue: number;
+    ebitda: number;
+  };
 }
 
 /** A listed comparable company for trading comps, picked by SIC code and size (or added by the user). */
@@ -225,6 +246,10 @@ export interface DealState {
   /** Trading comparables for the target (Market Cross-Check). */
   peers: Peer[];
   peerInfo?: PeerSearchInfo;
+  /** Precedent deals read from SEC merger filings; selected by index after the built-in list. */
+  livePrecedents: PrecedentDeal[];
+  /** How the live precedents were found (GET /api/precedents/:ticker). */
+  livePrecedentsInfo?: { ticker: string; sic: string; sicDescription?: string; found: number; skipped: string[]; sources: { label: string; url: string }[] };
   /** Monte Carlo settings: how uncertain each input is (see src/lib/monteCarlo.ts). */
   mc: {
     runs: number;
