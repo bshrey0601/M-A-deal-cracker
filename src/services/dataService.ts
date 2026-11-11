@@ -1,5 +1,6 @@
 import { CompanyData } from "../types";
 import { apiUrl, readApiError, BACKEND_MISSING } from "../lib/api";
+import { reviveCompany } from "../lib/revive";
 
 /** Thrown when filings loaded but no live price source answered; the user can type the price in. */
 export class NeedsPriceError extends Error {
@@ -29,7 +30,7 @@ export async function fetchCompanyData(ticker: string, manualPrice?: number): Pr
     if (body?.needsPrice) throw new NeedsPriceError(sym, message);
     throw new Error(message);
   }
-  return response.json();
+  return reviveCompany(await response.json());
 }
 
 /**

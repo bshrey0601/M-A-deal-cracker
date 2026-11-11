@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { useDeal } from "../../context/DealContext";
 import { PRECEDENTS } from "../../constants";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
@@ -84,8 +85,8 @@ export function PrecedentsPanel() {
         </div>
       </header>
 
-      {state.target && <TradingComps />}
-      {state.target && <LivePrecedents onShow={() => setFilter("sec")} />}
+      {state.target && <ErrorBoundary label="Trading comparables"><TradingComps /></ErrorBoundary>}
+      {state.target && <ErrorBoundary label="Precedent deals from SEC filings"><LivePrecedents onShow={() => setFilter("sec")} /></ErrorBoundary>}
 
       <div className="bg-bg-card border border-border-alt rounded-2xl p-6 relative overflow-hidden">
         <h3 className="text-[10px] font-bold uppercase tracking-[4px] text-accent-blue mb-6">Database Environment</h3>

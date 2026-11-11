@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from "react";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Trophy, Zap, AlertTriangle, Loader2, Info, BookOpen, Search, Calculator, Download, FileType } from "lucide-react";
@@ -191,7 +192,7 @@ ${factSheet(facts, state.target!.currency)}
          <StatsCard label="Confidence Score" val={`${health}%`} sub="Data Integrity" active />
       </div>
 
-      <FootballField state={state} />
+      <ErrorBoundary label="Football field"><FootballField state={state} /></ErrorBoundary>
 
       <section className="bg-bg-card border border-border-alt rounded-2xl p-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 pointer-events-none">

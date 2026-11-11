@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from "react";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { AccretionMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
 import { computeAccretion } from "../../lib/accretion";
@@ -210,7 +211,7 @@ export function AccretionPanel() {
         </div>
       </div>
 
-      <AccretionMonteCarlo />
+      <ErrorBoundary label="Monte Carlo"><AccretionMonteCarlo /></ErrorBoundary>
     </div>
   );
 }

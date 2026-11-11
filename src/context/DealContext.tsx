@@ -36,8 +36,9 @@ interface DealContextType {
 
 const DealContext = createContext<DealContextType | undefined>(undefined);
 
-export function DealProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<DealState>(initialState);
+/** `initial` seeds the state (used by tests); the app starts empty. */
+export function DealProvider({ children, initial }: { children: ReactNode; initial?: Partial<DealState> }) {
+  const [state, setState] = useState<DealState>(() => ({ ...initialState, ...initial }));
 
   const updateSection = <T extends keyof DealState>(section: T, data: Partial<DealState[T]>) => {
     setState(prev => ({

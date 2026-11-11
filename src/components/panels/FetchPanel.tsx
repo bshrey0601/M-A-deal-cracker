@@ -6,9 +6,16 @@ import { CitedField, CompanyData } from "../../types";
 import { Cited, SourceDialog } from "../SourceDialog";
 import { AccuracyChecks } from "../AccuracyChecks";
 import { DueDiligencePanel } from "../DueDiligencePanel";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { apiUrl, BACKEND_MISSING } from "../../lib/api";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
 import { Search, Loader2, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+
+/** A figure as % of revenue, rounded to 0.1, or the fallback when revenue is zero or the figure is missing (pre-revenue biotech). */
+const pctOfRevenue = (x: number, revenue: number, fallback: number) => {
+  const v = +((x / revenue) * 100).toFixed(1);
+  return Number.isFinite(v) && v !== 0 && revenue > 0 ? v : fallback;
+};
 
 export function FetchPanel() {
   const { state, setState, updateSection } = useDeal();
@@ -60,7 +67,7 @@ export function FetchPanel() {
       if (failed) throw failed.reason;
       const [target, acquirer] = results.map(r => (r as PromiseFulfilledResult<CompanyData>).value);
       
-      const rg = target.revenueGrowthYoY || 10;
+      const rg = Number.isFinite(target.revenueGrowthYoY) && target.revenueGrowthYoY !== 0 ? target.revenueGrowthYoY : 10;
       
       setState(prev => ({
         ...prev,
@@ -78,9 +85,9 @@ export function FetchPanel() {
         },
         dcf: {
           ...prev.dcf,
-          ebitM: +(target.ebit / target.revenue * 100).toFixed(1) || 12,
-          daPct: target.verifiedDA === false ? 5 : +(target.da / target.revenue * 100).toFixed(1) || 5,
-          cxPct: target.verifiedCapex === false ? 5 : +(target.capex / target.revenue * 100).toFixed(1) || 5,
+          ebitM: pctOfRevenue(target.ebit, target.revenue, 12),
+          daPct: target.verifiedDA === false ? 5 : pctOfRevenue(target.da, target.revenue, 5),
+          cxPct: target.verifiedCapex === false ? 5 : pctOfRevenue(target.capex, target.revenue, 5),
           bear: +Math.max(2, rg * 0.6).toFixed(1),
           base: +rg.toFixed(1),
           bull: +Math.min(40, rg * 1.5).toFixed(1)
@@ -118,7 +125,7 @@ export function FetchPanel() {
             </div>
             <div className="text-right">
               <p className="text-[10px] text-text-muted uppercase tracking-wider">EV/EBITDA</p>
-              <p className="text-xl font-mono text-text-primary">{fmtX((state.deal.offer * state.target.sharesOutstanding + state.target.netDebt) / state.target.ebitda)}</p>
+              <p className="text-xl font-mono text-text-primary" title={state.target.ebitda > 0 ? undefined : "Not meaningful: EBITDA is negative or zero"}>{state.target.ebitda > 0 ? fmtX((state.deal.offer * state.target.sharesOutstanding + state.target.netDebt) / state.target.ebitda) : "NM"}</p>
             </div>
           </div>
         )}
@@ -245,7 +252,7 @@ function FetchPreview({ target, acquirer }: { target: any, acquirer: any }) {
         <CompanyCard company={acquirer} type="ACQUIRER" color="var(--color-accent-blue)" />
       </div>
 
-      <DueDiligencePanel target={target} acquirer={acquirer} />
+      <ErrorBoundary label="Due diligence red flags"><DueDiligencePanel target={target} acquirer={acquirer} /></ErrorBoundary>
 
       <footer className="flex items-center justify-between border-t border-border-alt pt-6 mt-10">
         <div className="flex gap-4">
@@ -279,7 +286,7 @@ function CompanyCard({ company, type, color }: { company: CompanyData, type: str
       <p className="text-[11px] text-text-muted mb-3 leading-relaxed bg-bg/40 p-2 rounded border border-border-alt/30 select-none italic font-mono truncate">{company.description}</p>
 
       <SourceBadge company={company} />
-      <AccuracyChecks company={company} />
+      <ErrorBoundary label="Accuracy checks"><AccuracyChecks company={company} /></ErrorBoundary>
 
       <div className="flex items-center justify-between mb-3 text-[10px] text-text-muted">
         <span>Click any underlined number to see the filing it comes from.</span>
