@@ -5,6 +5,7 @@ import { apiUrl, BACKEND_MISSING } from "../lib/api";
 import { compsStats, impliedPrice, meaningful, PeersResult, toPeer } from "../lib/peers";
 import { CompanyData, Peer } from "../types";
 import { cn, fmt, fmtX } from "../lib/utils";
+import { reviveCompany, revivePeer } from "../lib/revive";
 
 const KEYS = [
   { key: "evRevenue", label: "EV/Revenue" },
@@ -40,7 +41,8 @@ export function TradingComps() {
       const exclude = state.acquirer ? `?exclude=${encodeURIComponent(state.acquirer.ticker)}` : "";
       const res = await fetch(apiUrl(`/api/peers/${encodeURIComponent(t.ticker)}${exclude}`));
       if (!res.ok) throw new Error(await readError(res));
-      const { peers: found, ...meta } = (await res.json()) as PeersResult;
+      const { peers: raw, ...meta } = (await res.json()) as PeersResult;
+      const found = raw.map(revivePeer);
       // Keep peers the user added by hand.
       setState(prev => ({ ...prev, peers: [...found, ...prev.peers.filter(p => p.why === "Added by you" && !found.some(f => f.ticker === p.ticker))], peerInfo: meta }));
     } catch (e: any) {
@@ -66,7 +68,7 @@ export function TradingComps() {
     try {
       const res = await fetch(apiUrl(`/api/market/${encodeURIComponent(ticker)}`));
       if (!res.ok) throw new Error(`${ticker}: ${await readError(res)}`);
-      const c = (await res.json()) as CompanyData;
+      const c = reviveCompany((await res.json()) as CompanyData);
       setPeers(p => [...p, toPeer(c, "Added by you")]);
       setAdd("");
     } catch (e: any) {

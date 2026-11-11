@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DealProvider } from "./context/DealContext";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
@@ -59,7 +60,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
-                {renderPanel()}
+                <ErrorBoundary key={activePanel} label="This page">{renderPanel()}</ErrorBoundary>
               </motion.div>
             </AnimatePresence>
           </main>

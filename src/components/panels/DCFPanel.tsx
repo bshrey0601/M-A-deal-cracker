@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { DcfMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
@@ -171,7 +172,7 @@ export function DCFPanel() {
         </div>
       </div>
 
-      <DcfMonteCarlo />
+      <ErrorBoundary label="Monte Carlo"><DcfMonteCarlo /></ErrorBoundary>
     </div>
   );
 }
