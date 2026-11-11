@@ -47,7 +47,7 @@ export function FootballField({ state }: { state: DealState }) {
               <div>
                 <div className="relative h-6 bg-bg-alt rounded">
                   <div
-                    className={`absolute top-1 bottom-1 rounded-sm ${inRange ? "bg-accent-blue/70" : "bg-accent-blue/35"}`}
+                    className={`absolute top-1 bottom-1 rounded-sm anim-bar-x ${inRange ? "bg-accent-blue/70" : "bg-accent-blue/35"}`}
                     style={{ left: x(r.low), width: `max(2px, calc(${x(r.high)} - ${x(r.low)}))` }}
                   />
                   {r.mid !== undefined && Number.isFinite(r.mid) && (

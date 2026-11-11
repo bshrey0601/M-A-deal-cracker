@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP } from "../../lib/utils";
+import { motion } from "motion/react";
 import { 
   Plus, 
   Check, 
@@ -65,14 +66,22 @@ export function Sidebar({ activePanel, setActivePanel }: SidebarProps) {
           key={item.id}
           onClick={() => setActivePanel(item.id)}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all text-left",
+            "nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left border border-transparent",
             activePanel === item.id 
-              ? "bg-accent-blue/10 text-accent-blue border border-accent-blue/20" 
+              ? "text-accent-blue" 
               : "text-text-secondary hover:bg-border/50 hover:text-text-primary"
           )}
         >
-          <item.icon size={14} className="shrink-0" />
-          {item.label}
+          {activePanel === item.id && (
+            // One highlight that glides between modules instead of jumping.
+            <motion.span
+              layoutId="nav-active"
+              className="absolute inset-0 rounded-md bg-accent-blue/10 border border-accent-blue/20"
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
+            />
+          )}
+          <item.icon size={14} className="nav-icon relative shrink-0" />
+          <span className="relative">{item.label}</span>
         </button>
       ))}
 
@@ -97,7 +106,7 @@ export function Sidebar({ activePanel, setActivePanel }: SidebarProps) {
 function CompanyCard({ company, active }: { company: any, active?: boolean }) {
   return (
     <div className={cn(
-      "px-3 py-2 rounded-md border transition-all cursor-default",
+      "px-3 py-2 rounded-md border transition-all cursor-default anim-slide-in",
       active ? "bg-accent-blue/10 border-accent-blue/20 text-accent-blue" : "border-border-alt bg-bg"
     )}>
       <div className="text-[10px] uppercase font-bold tracking-tighter opacity-50 mb-0.5">{company.ticker}</div>

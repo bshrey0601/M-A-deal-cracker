@@ -9,7 +9,7 @@ import { DCFPanel } from "./components/panels/DCFPanel";
 import { PrecedentsPanel } from "./components/panels/PrecedentsPanel";
 import { SummaryPanel } from "./components/panels/SummaryPanel";
 import { AccretionPanel } from "./components/panels/AccretionPanel";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, MotionConfig } from "motion/react";
 
 export default function App() {
   const [activePanel, setActivePanel] = useState("fetch");
@@ -45,6 +45,8 @@ export default function App() {
 
   return (
     <DealProvider>
+      {/* reducedMotion="user": Motion skips transform animations when the OS asks for reduced motion. */}
+      <MotionConfig reducedMotion="user">
       <div className="min-h-screen bg-bg font-sans text-text-primary selection:bg-accent-green selection:text-bg relative">
         <Topbar />
         
@@ -55,10 +57,11 @@ export default function App() {
             <AnimatePresence mode="wait">
               <motion.div
                 key={activePanel}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="page-enter"
+                initial={{ opacity: 0, y: 14, scale: 0.995 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeIn" } }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               >
                 <ErrorBoundary key={activePanel} label="This page">{renderPanel()}</ErrorBoundary>
               </motion.div>
@@ -111,6 +114,7 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+      </MotionConfig>
     </DealProvider>
   );
 }

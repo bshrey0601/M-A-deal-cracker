@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from "react";
+import { CountUp } from "../motion/CountUp";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { AccretionMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
@@ -54,12 +55,12 @@ export function AccretionPanel() {
         <div className="flex gap-8">
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Pro-Forma EPS</p>
-            <p className="text-xl font-mono text-text-primary">{a.currency}{fmt(res.proFormaEPS, 2)}</p>
+            <p className="text-xl font-mono text-text-primary"><CountUp text={`${a.currency ?? ""}${fmt(res.proFormaEPS, 2)}`} /></p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Accretion / (Dilution)</p>
             <p className={cn("text-xl font-mono font-bold", !res.meaningful ? "text-text-muted" : res.accretive ? "text-accent-green" : "text-accent-red")}>
-              {res.meaningful ? fmtP(res.accretionPct, 2) : "n/m"}
+              <CountUp text={res.meaningful ? fmtP(res.accretionPct, 2) : "n/m"} />
             </p>
           </div>
         </div>
