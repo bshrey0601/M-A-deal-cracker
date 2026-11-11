@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { MaybeCountUp } from "../motion/CountUp";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { useDeal } from "../../context/DealContext";
 import { PRECEDENTS } from "../../constants";
@@ -235,7 +236,7 @@ function KpiCard({ label, val, sub }: any) {
   return (
     <div className="bg-bg border border-border-alt rounded-lg p-4 transition-all hover:border-zinc-600">
       <div className="text-[8px] font-mono text-text-muted uppercase tracking-wider mb-2 opacity-60">{label}</div>
-      <div className="text-[15px] font-mono font-bold text-text-primary leading-tight mb-2">{val}</div>
+      <div className="text-[15px] font-mono font-bold text-text-primary leading-tight mb-2"><MaybeCountUp>{val}</MaybeCountUp></div>
       <div className="text-[9px] font-mono text-accent-blue font-bold uppercase tracking-tighter">{sub}</div>
     </div>
   );

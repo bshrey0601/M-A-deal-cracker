@@ -197,12 +197,12 @@ export function SourceDialog({ company, field, onOpen, onClose }: {
 
   // Portal to <body> so an animated (transformed) parent can't clip or offset the overlay.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 anim-fade" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Source of figure"
-        className="w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-bg-card border border-border-alt rounded-xl p-5 shadow-2xl"
+        className="w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-bg-card border border-border-alt rounded-xl p-5 shadow-2xl anim-pop"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 mb-4">

@@ -104,3 +104,116 @@
   padding: 0 2px;
   cursor: help;
 }
+
+/* ───────────────────────── Motion ─────────────────────────
+   Presentation only: these rules animate how content arrives, never what it says.
+   Everything uses transform/opacity (GPU-composited) and runs once on insert.
+   Users who ask the OS for reduced motion get the final state at once (see the end). */
+
+:root {
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+/* Cards enter with a short rise, staggered within their row or grid.
+   Only outermost cards animate, so nested cards don't double up. */
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):not(:is(section, .rounded-xl, .rounded-2xl, .rounded-lg) *) {
+  animation: rise-in 0.5s var(--ease-out-expo) both;
+}
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):nth-child(2) { animation-delay: 50ms; }
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):nth-child(3) { animation-delay: 100ms; }
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):nth-child(4) { animation-delay: 150ms; }
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):nth-child(5) { animation-delay: 200ms; }
+.page-enter :is(section, header, .rounded-xl, .rounded-2xl, .rounded-lg):nth-child(n + 6) { animation-delay: 250ms; }
+
+/* Table rows fade in top to bottom. */
+.page-enter tbody tr { animation: fade-in 0.4s ease-out both; }
+.page-enter tbody tr:nth-child(2) { animation-delay: 30ms; }
+.page-enter tbody tr:nth-child(3) { animation-delay: 60ms; }
+.page-enter tbody tr:nth-child(4) { animation-delay: 90ms; }
+.page-enter tbody tr:nth-child(5) { animation-delay: 120ms; }
+.page-enter tbody tr:nth-child(n + 6) { animation-delay: 150ms; }
+
+/* Hover: cards brighten their border and glow softly; small stat tiles lift. */
+.page-enter .bg-bg-card:is(.rounded-xl, .rounded-2xl) {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.page-enter .bg-bg-card:is(.rounded-xl, .rounded-2xl):hover {
+  border-color: #3f3f46;
+  box-shadow: 0 0 0 1px rgb(37 99 235 / 0.08), 0 12px 32px -16px rgb(37 99 235 / 0.35);
+}
+.page-enter .rounded-lg:is(.bg-bg, .bg-bg-alt, .bg-bg-card) {
+  transition: transform 0.2s var(--ease-out-expo), border-color 0.2s ease, background-color 0.2s ease;
+}
+.page-enter .rounded-lg:is(.bg-bg, .bg-bg-alt, .bg-bg-card):hover { transform: translateY(-2px); }
+
+/* Buttons press in slightly. */
+button:not(:disabled) { transition-property: color, background-color, border-color, opacity, box-shadow, transform, filter; }
+button:not(:disabled):active { transform: scale(0.97); }
+
+/* Sidebar icons nudge on hover. */
+.nav-item .nav-icon { transition: transform 0.2s var(--ease-out-expo); }
+.nav-item:hover .nav-icon { transform: translateX(2px); }
+
+/* Charts draw themselves: football-field bars grow from the left, histogram bars from the base.
+   Later input changes glide to the new value instead of snapping. */
+.anim-bar-x {
+  transform-origin: left center;
+  animation: grow-x 0.8s var(--ease-out-expo) both;
+  animation-delay: 150ms;
+  transition: left 0.4s var(--ease-out-expo), width 0.4s var(--ease-out-expo);
+}
+.anim-bar-y {
+  transform-origin: bottom center;
+  animation: grow-y 0.6s var(--ease-out-expo) both;
+  animation-delay: calc(100ms + var(--i, 0) * 12ms);
+  transition: height 0.35s var(--ease-out-expo);
+}
+
+.anim-fade { animation: fade-in 0.2s ease-out both; }
+.anim-pop { animation: pop-in 0.28s var(--ease-out-expo) both; }
+.anim-slide-in { animation: slide-in 0.35s var(--ease-out-expo) both; }
+
+/* Respect the OS "reduce motion" setting: no entrances, no movement, final state immediately.
+   Loading spinners keep turning so progress is still visible. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ld { animation-duration: 0.7s !important; animation-iteration-count: infinite !important; }
+  button:not(:disabled):active,
+  .page-enter .rounded-lg:hover { transform: none !important; }
+}
+
+/* Printing and PDF capture show content as it is, never mid-animation. */
+@media print {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

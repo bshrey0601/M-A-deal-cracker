@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { CountUp } from "../motion/CountUp";
 import { PRECEDENTS } from "../../constants";
 import { useDeal } from "../../context/DealContext";
 import { fetchCompanyData, fetchCompanyEstimate, NeedsPriceError } from "../../services/dataService";
@@ -121,7 +122,7 @@ export function FetchPanel() {
           <div className="flex gap-8">
             <div className="text-right">
               <p className="text-[10px] text-text-muted uppercase tracking-wider">Enterprise Value</p>
-              <p className="text-xl font-mono text-accent-blue">${fmt(state.deal.offer * state.target.sharesOutstanding + state.target.netDebt)} Mn</p>
+              <p className="text-xl font-mono text-accent-blue"><CountUp text={`$${fmt(state.deal.offer * state.target.sharesOutstanding + state.target.netDebt)} Mn`} /></p>
             </div>
             <div className="text-right">
               <p className="text-[10px] text-text-muted uppercase tracking-wider">EV/EBITDA</p>
@@ -294,9 +295,9 @@ function CompanyCard({ company, type, color }: { company: CompanyData, type: str
       </div>
 
       <div className="grid grid-cols-3 gap-6 mb-8">
-        <MetricBox label="Last Price" val={<C f="currentPrice">{`${cur}${fmt(company.currentPrice, 2)}`}</C>} sub={`${cur}${fmt(company.fiftyTwoWeekLow, 0)} Low`} />
-        <MetricBox label="Market Cap" val={<C f="marketCap">{`${cur}${fmt(company.marketCap)} Mn`}</C>} sub={<C f="sharesOutstanding">{`${fmt(company.sharesOutstanding, 0)} Mn Shares`}</C>} />
-        <MetricBox label="EV/EBITDA" val={<C f="evEbitda">{fmtX(company.evEbitda)}</C>} sub={<C f="peRatio">{`P/E ${fmtX(company.peRatio)}`}</C>} />
+        <MetricBox label="Last Price" val={<C f="currentPrice"><CountUp text={`${cur}${fmt(company.currentPrice, 2)}`} /></C>} sub={`${cur}${fmt(company.fiftyTwoWeekLow, 0)} Low`} />
+        <MetricBox label="Market Cap" val={<C f="marketCap"><CountUp text={`${cur}${fmt(company.marketCap)} Mn`} /></C>} sub={<C f="sharesOutstanding">{`${fmt(company.sharesOutstanding, 0)} Mn Shares`}</C>} />
+        <MetricBox label="EV/EBITDA" val={<C f="evEbitda"><CountUp text={fmtX(company.evEbitda)} /></C>} sub={<C f="peRatio">{`P/E ${fmtX(company.peRatio)}`}</C>} />
       </div>
 
       <div className="space-y-2">

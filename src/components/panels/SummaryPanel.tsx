@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from "react";
+import { MaybeCountUp } from "../motion/CountUp";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { useDeal } from "../../context/DealContext";
 import { cn, fmt, fmtP, fmtX } from "../../lib/utils";
@@ -328,7 +329,7 @@ function StatsCard({ label, val, sub, accent, active }: any) {
       active && "border-accent-blue/30 bg-accent-blue/5"
     )}>
        <div className="text-[8px] font-mono text-text-muted uppercase mb-2 tracking-widest opacity-60">{label}</div>
-       <div className={cn("text-[16px] font-mono font-bold leading-none mb-1 text-text-primary", accent === "accent-green" && "text-accent-green")}>{val}</div>
+       <div className={cn("text-[16px] font-mono font-bold leading-none mb-1 text-text-primary", accent === "accent-green" && "text-accent-green")}><MaybeCountUp>{val}</MaybeCountUp></div>
        <div className="text-[9px] font-mono text-text-muted opacity-40 uppercase tracking-tighter">{sub}</div>
     </div>
   );

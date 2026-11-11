@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { CountUp } from "../motion/CountUp";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { DcfMonteCarlo } from "../MonteCarlo";
 import { useDeal } from "../../context/DealContext";
@@ -48,11 +49,11 @@ export function DCFPanel() {
         <div className="flex gap-8">
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Base Price</p>
-            <p className="text-xl font-mono text-accent-blue">{t.currency}{fmt(run(state.dcf.base)?.price ?? NaN, 2)}</p>
+            <p className="text-xl font-mono text-accent-blue"><CountUp text={`${t.currency ?? ""}${fmt(run(state.dcf.base)?.price ?? NaN, 2)}`} /></p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Market Price</p>
-            <p className="text-xl font-mono text-text-primary">{t.currency}{fmt(t.currentPrice, 2)}</p>
+            <p className="text-xl font-mono text-text-primary"><CountUp text={`${t.currency ?? ""}${fmt(t.currentPrice, 2)}`} /></p>
           </div>
         </div>
       </header>

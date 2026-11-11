@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { CountUp } from "./motion/CountUp";
 import { Dices } from "lucide-react";
 import { useDeal } from "../context/DealContext";
 import { Distribution, simulateAccretion, simulateDcf } from "../lib/monteCarlo";
@@ -21,8 +22,8 @@ function Histogram({ d, refValue, refLabel, good, fmtV }: { d: Distribution; ref
           const mid = (b.from + b.to) / 2;
           const isGood = good === "above" ? mid >= refValue : mid < refValue;
           return (
-            <div key={i} className={cn("flex-1 rounded-t-sm", isGood ? "bg-accent-green/60" : "bg-accent-red/50")}
-              style={{ height: `${(b.count / max) * 100}%` }} title={`${fmtV(b.from)} to ${fmtV(b.to)}: ${b.count} runs`} />
+            <div key={i} className={cn("flex-1 rounded-t-sm anim-bar-y", isGood ? "bg-accent-green/60" : "bg-accent-red/50")}
+              style={{ height: `${(b.count / max) * 100}%`, ["--i" as any]: i }} title={`${fmtV(b.from)} to ${fmtV(b.to)}: ${b.count} runs`} />
           );
         })}
         {inRange && (
@@ -45,7 +46,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div className="bg-bg-alt border border-border-alt rounded-lg p-3">
       <div className="text-[9px] uppercase tracking-widest text-text-muted">{label}</div>
-      <div className={cn("text-lg font-bold font-mono", accent ?? "text-text-primary")}>{value}</div>
+      <div className={cn("text-lg font-bold font-mono", accent ?? "text-text-primary")}><CountUp text={value} /></div>
     </div>
   );
 }
